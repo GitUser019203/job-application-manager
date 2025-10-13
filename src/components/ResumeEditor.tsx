@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Resume, ItemType } from './types';
 import MarkdownPreview from './MarkdownPreview';
+import { saveToHTML } from '../utils/htmlUtils';
+import resumeText from './DemoMarkdown';
 
 interface ResumeEditorProps {
   resumes: Resume[];
@@ -101,7 +103,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
               className="border p-2 h-96"
             />
             <div className="border p-2 h-96 overflow-auto">
-              <MarkdownPreview markdown={editingResume?.content ? editingResume.content : "# Markdown"} />
+              <MarkdownPreview markdown={editingResume?.content ? editingResume.content : resumeText} />
             </div>
           </div>
           <button onClick={saveResume} className="bg-green-500 text-white p-2 rounded mt-2 mr-2">
@@ -110,8 +112,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
           <button onClick={() => setEditingResume(null)} className="bg-red-500 text-white p-2 rounded mt-2 mr-2">
             Cancel
           </button>
-          <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-blue-500 text-white p-2 rounded mt-2">
+          <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-blue-500 text-white p-2 rounded mt-2 mr-2">
             Preview Full Screen
+          </button>
+          <button onClick={() => saveToHTML(editingResume.content)} className="bg-purple-500 text-white p-2 rounded mt-2 mr-2">
+            Save To HTML
           </button>
           <div className="mt-4">
             <h4 className="font-semibold">Insert Items</h4>
