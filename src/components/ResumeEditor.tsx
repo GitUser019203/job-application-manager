@@ -65,7 +65,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
             <input
               type="text"
               placeholder={`Add ${type}`}
-              onKeyPress={(e) => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   addItem(type as ItemType, e.currentTarget.value);
                   e.currentTarget.value = '';
