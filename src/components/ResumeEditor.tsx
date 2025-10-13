@@ -68,7 +68,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     }
   };
 
-  const getPreviewContent = (id: string) => resumes.find(r => r.id === id)?.content || '';
+  const getPreviewContent = () =>  editingResume ? editingResume.content : (resumes.find(r => r.id === previewResumeId)?.content || '');
 
   return (
     <div className="mb-8">
@@ -130,11 +130,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
                     </option>
                   ))}
                 </select>
-                <input
-                  type="text"
+                <textarea
                   placeholder={`Add new ${type}`}
                   onKeyPress={(e) => {
-                    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                    if (e.key === 'Enter' && e.currentTarget.value.trim() && !e.shiftKey) {
                       addItem(type as ItemType, e.currentTarget.value);
                       e.currentTarget.value = '';
                     }
@@ -172,7 +171,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
           <button onClick={() => setPreviewResumeId(null)} className="bg-red-500 text-white p-2 rounded mb-4">
             Close Full Screen Preview
           </button>
-          <MarkdownPreview markdown={getPreviewContent(previewResumeId)} />
+          <MarkdownPreview markdown={getPreviewContent()} />
         </div>
       )}
     </div>

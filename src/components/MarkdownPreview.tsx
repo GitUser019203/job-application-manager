@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 
 interface PreviewProps {
   markdown: string;
@@ -9,6 +10,7 @@ interface PreviewProps {
 const Preview: React.FC<PreviewProps> = ({ markdown }) => {
   return (
       <ReactMarkdown
+        rehypePlugins={[rehypeRaw]}
       components={{
                   // Map `h1` (`# heading`) to use `h2`s.
                   // Rewrite `em`s (`*like so*`) to `i` with a red foreground color.
@@ -35,6 +37,22 @@ const Preview: React.FC<PreviewProps> = ({ markdown }) => {
                   h6(props) {
                     const {node, ...rest} = props
                     return <h6 style={{'fontSize': '0.67em'}} {...rest} />
+                  },
+                  li(props) {
+                    const {node, ...rest} = props
+                    return <li>{rest.children}</li>
+                  },
+                  ol(props) {
+                    const {node, ...rest} = props
+                    return <ol className="pl-5 list-decimal" {...rest} />
+                  },
+                  ul(props) {
+                    const {node, ...rest} = props
+                    return <ul className="pl-5 list-disc" {...rest}/>
+                  },                  
+                  hr(props) {
+                    const {node, ...rest} = props
+                    return <hr className="border-t-2 border-black my-2" {...rest} />
                   }
                 }}
       
