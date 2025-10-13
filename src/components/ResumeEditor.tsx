@@ -10,7 +10,16 @@ interface ResumeEditorProps {
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items, setItems }) => {
   const [newResume, setNewResume] = useState({ name: '', content: '', tags: '' });
-  const [selectedResume, setSelectedResume] = useState<string>('');
+  const [newItem, setNewItem] = useState<Record<ItemType, string>>({
+    projects: '',
+    skills: '',
+    education: '',
+    certificates: '',
+    bootcamps: '',
+    volunteering: '',
+    workExperience: '',
+    coursework: '',
+  });
 
   const addResume = () => {
     const resume: Resume = {
@@ -24,10 +33,13 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
   };
 
   const addItem = (type: ItemType, content: string) => {
-    setItems({
-      ...items,
-      [type]: [...items[type], { id: crypto.randomUUID(), content }],
-    });
+    if (content.trim()) {
+      setItems({
+        ...items,
+        [type]: [...items[type], { id: crypto.randomUUID(), content }],
+      });
+      setNewItem({ ...newItem, [type]: '' });
+    }
   };
 
   return (
@@ -62,17 +74,45 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
         <h3 className="font-semibold">Add Item to Resume</h3>
         {Object.keys(items).map(type => (
           <div key={type} className="my-2">
-            <input
-              type="text"
-              placeholder={`Add ${type}`}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  addItem(type as ItemType, e.currentTarget.value);
-                  e.currentTarget.value = '';
+            <label className="block font-medium">{type.charAt(0).toUpperCase() + type.slice(1)}</label>
+            <select
+              className="border p-2 w-full mb-1"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  setNewResume({
+                    ...newResume,
+                    content: newResume.content + (newResume.content ? '\n' : '') + e.target.value,
+                  });
                 }
               }}
-              className="border p-2"
+            >
+              <option value="" disabled>Select existing {type}</option>
+              {items[type as ItemType].map(item => (
+                <option key={item.id} value={item.content}>
+                  {item.content}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder={`Add new ${type}`}
+              value={newItem[type as ItemType]}
+              onChange={(e) => setNewItem({ ...newItem, [type]: e.target.value })}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && newItem[type as ItemType].trim()) {
+                  addItem(type as ItemType, newItem[type as ItemType]);
+                }
+              }}
+              className="border p-2 w-full"
             />
+            <button
+              onClick={() => addItem(type as ItemType, newItem[type as ItemType])}
+              className="bg-blue-500 text-white p-2 rounded mt-1"
+              disabled={!newItem[type as ItemType].trim()}
+            >
+              Add {type}
+            </button>
           </div>
         ))}
       </div>
