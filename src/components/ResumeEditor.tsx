@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Resume, ItemType } from './types';
+import MarkdownPreview from './MarkdownPreview';
 
 interface ResumeEditorProps {
   resumes: Resume[];
@@ -9,27 +10,47 @@ interface ResumeEditorProps {
 }
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items, setItems }) => {
-  const [newResume, setNewResume] = useState({ name: '', content: '', tags: '' });
-  const [newItem, setNewItem] = useState<Record<ItemType, string>>({
-    projects: '',
-    skills: '',
-    education: '',
-    certificates: '',
-    bootcamps: '',
-    volunteering: '',
-    workExperience: '',
-    coursework: '',
-  });
+  const [editingResume, setEditingResume] = useState<Resume & { isNew?: boolean } | null>(null);
+  const [previewResumeId, setPreviewResumeId] = useState<string | null>(null);
+  
 
-  const addResume = () => {
-    const resume: Resume = {
-      id: crypto.randomUUID(),
-      name: newResume.name,
-      content: newResume.content,
-      tags: newResume.tags.split(',').map(tag => tag.trim()),
-    };
-    setResumes([...resumes, resume]);
-    setNewResume({ name: '', content: '', tags: '' });
+  const startEditing = (resume?: Resume) => {
+    if (resume) {
+      setEditingResume({ ...resume });
+    } else {
+      setEditingResume({
+        id: crypto.randomUUID(),
+        name: '',
+        content: '',
+        tags: [],
+        isNew: true,
+      });
+    }
+  };
+
+  const updateEditingResume = (field: keyof Resume, value: any) => {
+    setEditingResume(prev => prev ? { ...prev, [field]: value } : null);
+  };
+
+  const saveResume = () => {
+    if (editingResume) {
+      const { isNew, ...resume } = editingResume;
+      // normalize tags to string[]
+      const rawTags = (resume as any).tags;
+      if (typeof rawTags === 'string') {
+        resume.tags = rawTags.split(',').map((tag: string) => tag.trim());
+      } else if (Array.isArray(rawTags)) {
+        resume.tags = rawTags;
+      } else {
+        resume.tags = [];
+      }
+      if (isNew) {
+        setResumes([...resumes, resume]);
+      } else {
+        setResumes(resumes.map(r => r.id === resume.id ? resume : r));
+      }
+      setEditingResume(null);
+    }
   };
 
   const addItem = (type: ItemType, content: string) => {
@@ -38,93 +59,122 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
         ...items,
         [type]: [...items[type], { id: crypto.randomUUID(), content }],
       });
-      setNewItem({ ...newItem, [type]: '' });
     }
   };
+
+  const insertItem = (content: string) => {
+    if (editingResume && content) {
+      updateEditingResume('content', editingResume.content + (editingResume.content ? '\n' : '') + content);
+    }
+  };
+
+  const getPreviewContent = (id: string) => resumes.find(r => r.id === id)?.content || '';
 
   return (
     <div className="mb-8">
       <h2 className="text-xl font-semibold mb-4">Resume Editor</h2>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Resume Name"
-          value={newResume.name}
-          onChange={(e) => setNewResume({ ...newResume, name: e.target.value })}
-          className="border p-2 mr-2"
-        />
-        <input
-          type="text"
-          placeholder="Tags (comma-separated)"
-          value={newResume.tags}
-          onChange={(e) => setNewResume({ ...newResume, tags: e.target.value })}
-          className="border p-2 mr-2"
-        />
-        <textarea
-          placeholder="Resume Content"
-          value={newResume.content}
-          onChange={(e) => setNewResume({ ...newResume, content: e.target.value })}
-          className="border p-2 w-full"
-        />
-        <button onClick={addResume} className="bg-blue-500 text-white p-2 rounded mt-2">
-          Add Resume
-        </button>
-      </div>
-      <div className="mb-4">
-        <h3 className="font-semibold">Add Item to Resume</h3>
-        {Object.keys(items).map(type => (
-          <div key={type} className="my-2">
-            <label className="block font-medium">{type.charAt(0).toUpperCase() + type.slice(1)}</label>
-            <select
-              className="border p-2 w-full mb-1"
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  setNewResume({
-                    ...newResume,
-                    content: newResume.content + (newResume.content ? '\n' : '') + e.target.value,
-                  });
-                }
-              }}
-            >
-              <option value="" disabled>Select existing {type}</option>
-              {items[type as ItemType].map(item => (
-                <option key={item.id} value={item.content}>
-                  {item.content}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder={`Add new ${type}`}
-              value={newItem[type as ItemType]}
-              onChange={(e) => setNewItem({ ...newItem, [type]: e.target.value })}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && newItem[type as ItemType].trim()) {
-                  addItem(type as ItemType, newItem[type as ItemType]);
-                }
-              }}
-              className="border p-2 w-full"
+      <button onClick={() => startEditing()} className="bg-blue-500 text-white p-2 rounded mb-4">
+        Add New Resume
+      </button>
+      {editingResume && (
+        <div className="border p-4 mb-4 rounded">
+          <h3 className="font-semibold mb-2">{editingResume.isNew ? 'New Resume' : 'Edit Resume'}</h3>
+          <input
+            type="text"
+            placeholder="Resume Name"
+            value={editingResume.name}
+            onChange={(e) => updateEditingResume('name', e.target.value)}
+            className="border p-2 mr-2 mb-2"
+          />
+          <input
+            type="text"
+            placeholder="Tags (comma-separated)"
+            value={typeof editingResume.tags === 'string' ? editingResume.tags : editingResume.tags.join(', ')}
+            onChange={(e) => updateEditingResume('tags', e.target.value)}
+            className="border p-2 mr-2 mb-2"
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <textarea
+              placeholder="Resume Content (Markdown)"
+              value={editingResume.content}
+              onChange={(e) => updateEditingResume('content', e.target.value)}
+              className="border p-2 h-96"
             />
-            <button
-              onClick={() => addItem(type as ItemType, newItem[type as ItemType])}
-              className="bg-blue-500 text-white p-2 rounded mt-1"
-              disabled={!newItem[type as ItemType].trim()}
-            >
-              Add {type}
-            </button>
+            <div className="border p-2 h-96 overflow-auto">
+              <MarkdownPreview markdown={editingResume?.content ? editingResume.content : "# Markdown"} />
+            </div>
           </div>
-        ))}
-      </div>
+          <button onClick={saveResume} className="bg-green-500 text-white p-2 rounded mt-2 mr-2">
+            Save
+          </button>
+          <button onClick={() => setEditingResume(null)} className="bg-red-500 text-white p-2 rounded mt-2 mr-2">
+            Cancel
+          </button>
+          <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-blue-500 text-white p-2 rounded mt-2">
+            Preview Full Screen
+          </button>
+          <div className="mt-4">
+            <h4 className="font-semibold">Insert Items</h4>
+            {Object.keys(items).map(type => (
+              <div key={type} className="my-2">
+                <label className="block font-medium">{type.charAt(0).toUpperCase() + type.slice(1)}</label>
+                <select
+                  className="border p-2 w-full mb-1"
+                  defaultValue=""
+                  onChange={(e) => insertItem(e.target.value)}
+                >
+                  <option value="" disabled>Select existing {type}</option>
+                  {items[type as ItemType].map(item => (
+                    <option key={item.id} value={item.content}>
+                      {item.content}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder={`Add new ${type}`}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                      addItem(type as ItemType, e.currentTarget.value);
+                      e.currentTarget.value = '';
+                    }
+                  }}
+                  className="border p-2 w-full"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
-        <h3 className="font-semibold">Existing Resumes</h3>
+        <h3 className="font-semibold mb-2">Existing Resumes</h3>
         {resumes.map(resume => (
-          <div key={resume.id} className="border p-2 my-2">
-            <h4>{resume.name} ({resume.tags.join(', ')})</h4>
-            <p>{resume.content}</p>
+          <div key={resume.id} className="border p-2 my-2 rounded">
+            <div className="flex justify-between items-center">
+              <h4 className="font-medium">{resume.name} ({resume.tags.join(', ')})</h4>
+              <div>
+                <button onClick={() => startEditing(resume)} className="bg-blue-500 text-white p-1 rounded mr-2">
+                  Edit
+                </button>
+                <button onClick={() => setPreviewResumeId(resume.id)} className="bg-blue-500 text-white p-1 rounded">
+                  Preview Full Screen
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 h-40 overflow-auto">
+              <MarkdownPreview markdown={resume.content} />
+            </div>
           </div>
         ))}
       </div>
+      {previewResumeId && (
+        <div className="fixed top-0 left-0 w-full h-full bg-white z-50 p-4 overflow-auto">
+          <button onClick={() => setPreviewResumeId(null)} className="bg-red-500 text-white p-2 rounded mb-4">
+            Close Full Screen Preview
+          </button>
+          <MarkdownPreview markdown={getPreviewContent(previewResumeId)} />
+        </div>
+      )}
     </div>
   );
 };
