@@ -14,7 +14,8 @@ interface ResumeEditorProps {
 const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items, setItems }) => {
   const [editingResume, setEditingResume] = useState<Resume & { isNew?: boolean } | null>(null);
   const [previewResumeId, setPreviewResumeId] = useState<string | null>(null);
-  
+  const [addingItemType, setAddingItemType] = useState<ItemType | null>(null);
+  const [newItemContent, setNewItemContent] = useState('');
 
   const startEditing = (resume?: Resume) => {
     if (resume) {
@@ -55,13 +56,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     }
   };
 
-  const addItem = (type: ItemType, content: string) => {
-    if (content.trim()) {
+  const addItem = () => {
+    if (addingItemType && newItemContent.trim()) {
       setItems({
         ...items,
-        [type]: [...items[type], { id: crypto.randomUUID(), content }],
+        [addingItemType]: [...items[addingItemType], { id: crypto.randomUUID(), content: newItemContent }],
       });
+      setNewItemContent('');
+      setAddingItemType(null);
     }
+  };
+
+  const deleteItem = (type: ItemType, id: string) => {
+    setItems({
+      ...items,
+      [type]: items[type].filter(item => item.id !== id),
+    });
   };
 
   const insertItem = (content: string) => {
@@ -70,113 +80,187 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     }
   };
 
-  const getPreviewContent = () =>  editingResume ? editingResume.content : (resumes.find(r => r.id === previewResumeId)?.content || '');
+  const getPreviewContent = () => editingResume ? editingResume.content : (resumes.find(r => r.id === previewResumeId)?.content || '');
 
   return (
-    <div className="mb-8">
-      <h2 className="text-xl font-semibold mb-4">Resume Editor</h2>
-      <button onClick={() => startEditing()} className="bg-blue-500 text-white p-2 rounded mb-4">
-        Add New Resume
-      </button>
-      {editingResume && (
-        <div className="border p-4 mb-4 rounded">
-          <h3 className="font-semibold mb-2">{editingResume.isNew ? 'New Resume' : 'Edit Resume'}</h3>
-          <input
-            type="text"
-            placeholder="Resume Name"
-            value={editingResume.name}
-            onChange={(e) => updateEditingResume('name', e.target.value)}
-            className="border p-2 mr-2 mb-2"
-          />
-          <input
-            type="text"
-            placeholder="Tags (comma-separated)"
-            value={typeof editingResume.tags === 'string' ? editingResume.tags : editingResume.tags.join(', ')}
-            onChange={(e) => updateEditingResume('tags', e.target.value)}
-            className="border p-2 mr-2 mb-2"
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <textarea
-              placeholder="Resume Content (Markdown)"
-              value={editingResume.content}
-              onChange={(e) => updateEditingResume('content', e.target.value)}
-              className="border p-2 h-96"
-            />
-            <div className="border p-2 h-96 overflow-auto">
-              <MarkdownPreview markdown={editingResume?.content ? editingResume.content : resumeText} />
-            </div>
-          </div>
-          <button onClick={saveResume} className="bg-green-500 text-white p-2 rounded mt-2 mr-2">
-            Save
-          </button>
-          <button onClick={() => setEditingResume(null)} className="bg-red-500 text-white p-2 rounded mt-2 mr-2">
-            Cancel
-          </button>
-          <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-blue-500 text-white p-2 rounded mt-2 mr-2">
-            Preview Full Screen
-          </button>
-          <button onClick={() => saveToHTML(editingResume.content)} className="bg-purple-500 text-white p-2 rounded mt-2 mr-2">
-            Save To HTML
-          </button>
-          <div className="mt-4">
-            <h4 className="font-semibold">Insert Items</h4>
-            {Object.keys(items).map(type => (
-              <div key={type} className="my-2">
-                <label className="block font-medium">{type.charAt(0).toUpperCase() + type.slice(1)}</label>
-                <select
-                  className="border p-2 w-full mb-1"
-                  defaultValue=""
-                  onChange={(e) => insertItem(e.target.value)}
+    <div className="flex h-screen bg-gray-50">
+      {/* Left Sidebar: Resume List */}
+      <div className="w-64 bg-white border-r p-4 overflow-y-auto flex-shrink-0">
+        <h2 className="text-xl font-bold mb-4 text-gray-800">Resumes</h2>
+        <button
+          onClick={() => startEditing()}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded mb-4 transition-colors"
+        >
+          + New Resume
+        </button>
+        <div className="space-y-2">
+          {resumes.map(resume => (
+            <div
+              key={resume.id}
+              className={`p-3 rounded border cursor-pointer hover:bg-gray-50 transition-colors ${editingResume?.id === resume.id ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}
+              onClick={() => startEditing(resume)}
+            >
+              <h4 className="font-semibold text-gray-800">{resume.name || 'Untitled'}</h4>
+              <div className="text-xs text-gray-500 mt-1">
+                {resume.tags.length > 0 ? resume.tags.join(', ') : 'No tags'}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPreviewResumeId(resume.id); }}
+                  className="text-xs text-blue-600 hover:text-blue-800"
                 >
-                  <option value="" disabled>Select existing {type}</option>
-                  {items[type as ItemType].map(item => (
-                    <option key={item.id} value={item.content}>
-                      {item.content}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  placeholder={`Add new ${type}`}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && e.currentTarget.value.trim() && !e.shiftKey) {
-                      addItem(type as ItemType, e.currentTarget.value);
-                      e.currentTarget.value = '';
-                    }
-                  }}
-                  className="border p-2 w-full"
-                />
+                  Preview
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      )}
-      <div>
-        <h3 className="font-semibold mb-2">Existing Resumes</h3>
-        {resumes.map(resume => (
-          <div key={resume.id} className="border p-2 my-2 rounded">
-            <div className="flex justify-between items-center">
-              <h4 className="font-medium">{resume.name} ({resume.tags.join(', ')})</h4>
-              <div>
-                <button onClick={() => startEditing(resume)} className="bg-blue-500 text-white p-1 rounded mr-2">
-                  Edit
+      </div>
+
+      {/* Center: Editor */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {editingResume ? (
+          <div className="flex-1 flex flex-col p-4 overflow-hidden">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">{editingResume.isNew ? 'New Resume' : 'Edit Resume'}</h3>
+              <div className="space-x-2">
+                <button onClick={saveResume} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors">
+                  Save
                 </button>
-                <button onClick={() => setPreviewResumeId(resume.id)} className="bg-blue-500 text-white p-1 rounded">
-                  Preview Full Screen
+                <button onClick={() => setEditingResume(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors">
+                  Close
+                </button>
+                <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors">
+                  Preview
+                </button>
+                <button onClick={() => saveToHTML(editingResume.content)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded transition-colors">
+                  Export HTML
                 </button>
               </div>
             </div>
-            <div className="mt-2 h-40 overflow-auto">
-              <MarkdownPreview markdown={resume.content} />
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <input
+                type="text"
+                placeholder="Resume Name"
+                value={editingResume.name}
+                onChange={(e) => updateEditingResume('name', e.target.value)}
+                className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Tags (comma-separated)"
+                value={typeof editingResume.tags === 'string' ? editingResume.tags : editingResume.tags.join(', ')}
+                onChange={(e) => updateEditingResume('tags', e.target.value)}
+                className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
+              <textarea
+                placeholder="Resume Content (Markdown)"
+                value={editingResume.content}
+                onChange={(e) => updateEditingResume('content', e.target.value)}
+                className="border p-4 rounded resize-none focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+              />
+              <div className="border p-4 rounded overflow-auto bg-white">
+                <MarkdownPreview markdown={editingResume.content} />
+              </div>
             </div>
           </div>
-        ))}
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            Select a resume to edit or create a new one
+          </div>
+        )}
       </div>
+
+      {/* Right Sidebar: Toolbox */}
+      <div className="w-80 bg-white border-l p-4 overflow-y-auto flex-shrink-0">
+        <h2 className="text-xl font-bold mb-4 text-gray-800">Toolbox</h2>
+        <div className="space-y-6">
+          {Object.keys(items).map(type => (
+            <div key={type}>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-semibold text-gray-700 capitalize">{type}</h3>
+                <button
+                  onClick={() => setAddingItemType(type as ItemType)}
+                  className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded"
+                >
+                  + Add
+                </button>
+              </div>
+
+              {addingItemType === type && (
+                <div className="mb-3 p-3 bg-gray-50 rounded border border-blue-200">
+                  <textarea
+                    autoFocus
+                    placeholder={`Enter new ${type}...`}
+                    value={newItemContent}
+                    onChange={(e) => setNewItemContent(e.target.value)}
+                    className="w-full border p-2 rounded mb-2 text-sm"
+                    rows={3}
+                  />
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      onClick={() => { setAddingItemType(null); setNewItemContent(''); }}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={addItem}
+                      className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {items[type as ItemType].length === 0 ? (
+                  <div className="text-sm text-gray-400 italic">No items yet</div>
+                ) : (
+                  items[type as ItemType].map(item => (
+                    <div
+                      key={item.id}
+                      className="group relative p-2 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded cursor-pointer transition-all"
+                      onClick={() => insertItem(item.content)}
+                      title="Click to insert"
+                    >
+                      <div className="text-sm text-gray-700 line-clamp-3">{item.content}</div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteItem(type as ItemType, item.id); }}
+                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1"
+                        title="Delete item"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Full Screen Preview Modal */}
       {previewResumeId && (
-        <div className="fixed top-0 left-0 w-full h-full bg-white z-50 p-4 overflow-auto">
-          <button onClick={() => setPreviewResumeId(null)} className="bg-red-500 text-white p-2 rounded mb-4">
-            Close Full Screen Preview
-          </button>
-          <MarkdownPreview markdown={getPreviewContent()} />
+        <div className="fixed inset-0 bg-white z-50 flex flex-col">
+          <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+            <h2 className="text-xl font-bold">Resume Preview</h2>
+            <button
+              onClick={() => setPreviewResumeId(null)}
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full">
+            <MarkdownPreview markdown={getPreviewContent()} />
+          </div>
         </div>
       )}
     </div>
