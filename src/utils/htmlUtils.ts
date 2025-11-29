@@ -40,7 +40,7 @@ export function saveToHTML(markdown: string): void {
   <title>Resume</title>
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
 </head>
-<body class="p-8 prose max-w-none">
+<body class="p-8 prose max-w-none space-y-0.5 text-[10px]">
   ${bodyContent}
 </body>
 </html>
