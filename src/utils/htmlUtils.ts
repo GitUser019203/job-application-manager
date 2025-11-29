@@ -22,8 +22,29 @@ export function saveToHTML(markdown: string): void {
     linkify: true,
   });
 
+  // Customize HR renderer
+  md.renderer.rules.hr = () => {
+    return '<hr class="border-t-2 border-black my-2 w-full">\n';
+  };
+
   // Convert Markdown to HTML
-  const htmlContent = md.render(markdown);
+  const bodyContent = md.render(markdown);
+
+  // Wrap in full HTML structure with Tailwind CDN
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume</title>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+</head>
+<body class="p-8 prose max-w-none">
+  ${bodyContent}
+</body>
+</html>
+  `.trim();
 
   // Trigger download
   downloadHTML(htmlContent, 'resume.html');
