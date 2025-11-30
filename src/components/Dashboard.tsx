@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Application, Resume } from './types';
+import Preview from './MarkdownPreview';
 
 interface DashboardProps {
   applications: Application[];
@@ -10,10 +11,14 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, resumes }) => {
   const [filter, setFilter] = useState<string>('All');
   const [isAdding, setIsAdding] = useState(false);
+  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
   const [newApplication, setNewApplication] = useState({
     company: '',
     position: '',
     resumeId: '',
+    jobUrl: '',
+    jobDescription: '',
+    coverLetter: '',
   });
 
   const addApplication = () => {
@@ -28,9 +33,12 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
       resumeId: newApplication.resumeId,
       notes: [],
       journalEntries: [],
+      jobUrl: newApplication.jobUrl,
+      jobDescription: newApplication.jobDescription,
+      coverLetter: newApplication.coverLetter,
     };
     setApplications([...applications, newApp]);
-    setNewApplication({ company: '', position: '', resumeId: '' });
+    setNewApplication({ company: '', position: '', resumeId: '', jobUrl: '', jobDescription: '', coverLetter: '' });
     setIsAdding(false);
   };
 
@@ -38,6 +46,10 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     setApplications(applications.map(app =>
       app.id === id ? { ...app, status } : app
     ));
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedAppId(expandedAppId === id ? null : id);
   };
 
   const filteredApplications = filter === 'All'
@@ -112,9 +124,9 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
       {isAdding && (
         <div className="bg-white p-6 rounded-lg shadow-md border border-indigo-100 mb-8 animate-fade-in-down">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">New Application</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Company</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Company *</label>
               <input
                 type="text"
                 value={newApplication.company}
@@ -124,13 +136,23 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Position</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Position *</label>
               <input
                 type="text"
                 value={newApplication.position}
                 onChange={(e) => setNewApplication({ ...newApplication, position: e.target.value })}
                 className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="e.g. Frontend Engineer"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Job Posting URL</label>
+              <input
+                type="url"
+                value={newApplication.jobUrl}
+                onChange={(e) => setNewApplication({ ...newApplication, jobUrl: e.target.value })}
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="https://..."
               />
             </div>
             <div>
@@ -145,6 +167,26 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                   <option key={resume.id} value={resume.id}>{resume.name}</option>
                 ))}
               </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Job Description</label>
+              <textarea
+                value={newApplication.jobDescription}
+                onChange={(e) => setNewApplication({ ...newApplication, jobDescription: e.target.value })}
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                rows={3}
+                placeholder="Paste job description here (Markdown supported)..."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Cover Letter</label>
+              <textarea
+                value={newApplication.coverLetter}
+                onChange={(e) => setNewApplication({ ...newApplication, coverLetter: e.target.value })}
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                rows={3}
+                placeholder="Paste your cover letter here (Markdown supported)..."
+              />
             </div>
           </div>
           <div className="flex justify-end">
@@ -184,7 +226,49 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                     Resume: {resumes.find(r => r.id === app.resumeId)?.name || 'Unknown'}
                   </p>
                 )}
+                {app.jobUrl && (
+                  <a href={app.jobUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-xs mt-1 block truncate">
+                    Job Link ↗
+                  </a>
+                )}
               </div>
+
+              {/* Expandable Details */}
+              {(app.jobDescription || app.coverLetter) && (
+                <div className="mb-4">
+                  <button
+                    onClick={() => toggleExpand(app.id)}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium focus:outline-none"
+                  >
+                    {expandedAppId === app.id ? 'Hide Details' : 'View Details'}
+                  </button>
+                  {expandedAppId === app.id && (
+                    <div className="mt-2 text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                      {app.jobDescription && (
+                        <div>
+                          <strong className="block text-slate-700 mb-1">Job Description:</strong>
+                          <div className="line-clamp-6 hover:line-clamp-none">
+                            <Preview markdown={app.jobDescription} />
+                          </div>
+                        </div>
+                      )}
+
+                      {app.jobDescription && app.coverLetter && (
+                        <hr className="my-3 border-slate-200" />
+                      )}
+
+                      {app.coverLetter && (
+                        <div>
+                          <strong className="block text-slate-700 mb-1">Cover Letter:</strong>
+                          <div className="line-clamp-6 hover:line-clamp-none">
+                            <Preview markdown={app.coverLetter} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="pt-4 border-t border-slate-100 mt-auto">
                 <label className="block text-xs font-medium text-slate-500 mb-1">Update Status</label>

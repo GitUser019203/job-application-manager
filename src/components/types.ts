@@ -17,6 +17,9 @@ export interface Application {
   journalEntries: JournalEntry[];
   questions?: string[]; // Optional as it might be migrated to journalEntries
   outcome?: string;     // Optional as it might be migrated to journalEntries
+  jobDescription?: string;
+  coverLetter?: string;
+  jobUrl?: string;
 }
 
 export interface Resume {

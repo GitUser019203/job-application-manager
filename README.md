@@ -9,6 +9,9 @@ This project evolved through multiple redesigns and enhancements, integrating pe
 
 ### 📊 Application Tracker Dashboard
 - Track job applications with statuses: **Submitted**, **Interviewing**, **Rejected**, **Offer Received**
+- **New:** Store **Job Description** and **Cover Letter** for each application
+- **New:** Save direct **Job Posting URLs**
+- **New:** **Markdown support** for rich text formatting in descriptions and cover letters
 - Stats overview (total applications, active interviews, offers)
 - Add new applications with validation and resume association
 - Update status directly from application cards
