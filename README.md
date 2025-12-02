@@ -12,6 +12,7 @@ This project evolved through multiple redesigns and enhancements, integrating pe
 - **New:** Store **Job Description** and **Cover Letter** for each application
 - **New:** Save direct **Job Posting URLs**
 - **New:** **Markdown support** for rich text formatting in descriptions and cover letters
+- **New:** **AI Resume Review:** Use your own Google Gemini API key to get instant feedback on your application's alignment with the job description.
 - Stats overview (total applications, active interviews, offers)
 - Add new applications with validation and resume association
 - Update status directly from application cards

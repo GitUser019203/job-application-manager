@@ -21,6 +21,12 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     coverLetter: '',
   });
 
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<string | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+
   const addApplication = () => {
     if (!newApplication.company || !newApplication.position) return;
 
@@ -52,6 +58,73 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     setExpandedAppId(expandedAppId === id ? null : id);
   };
 
+  const handleReview = async (app: Application) => {
+    if (!geminiApiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
+
+    const resume = resumes.find(r => r.id === app.resumeId);
+    if (!resume) {
+      alert('Resume not found');
+      return;
+    }
+
+    setIsReviewing(true);
+    setReviewResult(null);
+    setShowReviewModal(true);
+
+    try {
+      const prompt = `
+        You are an expert career coach. Please review the following job application materials and provide feedback.
+        
+        JOB DESCRIPTION:
+        ${app.jobDescription}
+
+        COVER LETTER:
+        ${app.coverLetter}
+
+        RESUME:
+        ${resume.content || JSON.stringify(resume.sections)}
+
+        Please analyze the alignment between the resume/cover letter and the job description. 
+        Highlight strengths, identify gaps, and suggest specific improvements.
+        Format your response in Markdown.
+      `;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }]
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error.message || 'API Error');
+      }
+
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        setReviewResult(text);
+      } else {
+        throw new Error('No content generated');
+      }
+
+    } catch (error: any) {
+      console.error('Gemini API Error:', error);
+      setReviewResult(`Error: ${error.message}. Please check your API key and try again.`);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
   const filteredApplications = filter === 'All'
     ? applications
     : applications.filter(app => app.status === filter);
@@ -80,18 +153,29 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
           <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
           <p className="text-slate-500">Track your job applications and progress</p>
         </div>
-        <div className="flex space-x-4">
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
-            <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Total</div>
-          </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
-            <div className="text-2xl font-bold text-yellow-600">{stats.interviewing}</div>
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Active</div>
-          </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
-            <div className="text-2xl font-bold text-green-600">{stats.offers}</div>
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Offers</div>
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setShowApiKeyModal(true)}
+            className={`text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${geminiApiKey
+              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+          >
+            {geminiApiKey ? '🔑 API Key Set' : '🔑 Set API Key'}
+          </button>
+          <div className="flex space-x-4">
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
+              <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
+              <div className="text-xs text-slate-500 uppercase tracking-wide">Total</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
+              <div className="text-2xl font-bold text-yellow-600">{stats.interviewing}</div>
+              <div className="text-xs text-slate-500 uppercase tracking-wide">Active</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-center min-w-[100px]">
+              <div className="text-2xl font-bold text-green-600">{stats.offers}</div>
+              <div className="text-xs text-slate-500 uppercase tracking-wide">Offers</div>
+            </div>
           </div>
         </div>
       </div>
@@ -236,12 +320,24 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
               {/* Expandable Details */}
               {(app.jobDescription || app.coverLetter) && (
                 <div className="mb-4">
-                  <button
-                    onClick={() => toggleExpand(app.id)}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium focus:outline-none"
-                  >
-                    {expandedAppId === app.id ? 'Hide Details' : 'View Details'}
-                  </button>
+                  <div className="flex justify-between items-center mb-2">
+                    <button
+                      onClick={() => toggleExpand(app.id)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium focus:outline-none"
+                    >
+                      {expandedAppId === app.id ? 'Hide Details' : 'View Details'}
+                    </button>
+
+                    {app.resumeId && app.jobDescription && app.coverLetter && (
+                      <button
+                        onClick={() => handleReview(app)}
+                        className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors flex items-center gap-1"
+                      >
+                        ✨ Review with Gemini
+                      </button>
+                    )}
+                  </div>
+
                   {expandedAppId === app.id && (
                     <div className="mt-2 text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
                       {app.jobDescription && (
@@ -285,6 +381,80 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* API Key Modal */}
+      {showApiKeyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Set Gemini API Key</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Enter your Google Gemini API key to enable AI features. The key is <strong>not saved</strong> and will be lost when you refresh the page.
+            </p>
+            <input
+              type="password"
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              className="w-full border-slate-300 rounded-md mb-4 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Enter API Key..."
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowApiKeyModal(false)}
+                className="px-4 py-2 text-slate-600 hover:text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowApiKeyModal(false)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+              >
+                Save (Session Only)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Result Modal */}
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                ✨ Gemini Application Review
+              </h3>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {isReviewing ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                  <p className="text-slate-500 animate-pulse">Analyzing your application...</p>
+                </div>
+              ) : (
+                <div className="prose prose-sm max-w-none">
+                  <Preview markdown={reviewResult || ''} />
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="bg-slate-100 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
