@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Application, JournalEntry } from './types';
 
+import { db } from '../utils/db';
+
 interface InterviewJournalProps {
   applications: Application[];
   setApplications: React.Dispatch<React.SetStateAction<Application[]>>;
@@ -9,32 +11,205 @@ interface InterviewJournalProps {
 const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setApplications }) => {
   const [newEntry, setNewEntry] = useState({
     applicationId: '',
+    date: new Date().toISOString().split('T')[0],
     content: '',
     questions: '',
     outcome: '',
   });
 
-  const addJournalEntry = () => {
+  const [editingEntry, setEditingEntry] = useState<{ entryId: string, appId: string } | null>(null);
+
+  const startEditing = (entry: any) => {
+    setNewEntry({
+      applicationId: entry.appId,
+      date: new Date(entry.date).toISOString().split('T')[0],
+      content: entry.content,
+      questions: entry.questions.join('\n'),
+      outcome: entry.outcome || '',
+    });
+    setEditingEntry({ entryId: entry.id, appId: entry.appId });
+  };
+
+  const saveJournalEntry = async () => {
     if (!newEntry.applicationId || !newEntry.content) return;
 
-    const entry: JournalEntry = {
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
-      content: newEntry.content,
-      questions: newEntry.questions.split(',').map(q => q.trim()).filter(q => q),
-      outcome: newEntry.outcome,
+    const entryDate = new Date(newEntry.date + 'T12:00:00').toISOString();
+    // Split by new line, generic cleaning
+    const questionsList = newEntry.questions
+      .split('\n')
+      .map(q => q.trim())
+      .filter(q => q);
+
+    if (editingEntry) {
+      // Update existing
+      const appIndex = applications.findIndex(a => a.id === editingEntry.appId);
+      if (appIndex === -1) return;
+
+      const updatedEntries = applications[appIndex].journalEntries.map(e => {
+        if (e.id === editingEntry.entryId) {
+          return {
+            ...e,
+            date: entryDate,
+            content: newEntry.content,
+            questions: questionsList,
+            outcome: newEntry.outcome,
+          };
+        }
+        return e;
+      });
+
+      // Logic if user CHANGED the application (move entry) could be complex, 
+      // for simplicty, forbid changing application or handle as delete + add.
+      // Here we assume application can change but we need to handle moving it.
+      // Ideally we just update it in place if appId matches.
+
+      if (newEntry.applicationId !== editingEntry.appId) {
+        // Move entry to new app
+        // 1. Remove from old
+        const oldApp = applications[appIndex];
+        const entryToMove = oldApp.journalEntries.find(e => e.id === editingEntry.entryId);
+        if (!entryToMove) return;
+
+        const updatedOldApp = {
+          ...oldApp,
+          journalEntries: oldApp.journalEntries.filter(e => e.id !== editingEntry.entryId)
+        };
+
+        // 2. Add to new
+        const newAppIndex = applications.findIndex(a => a.id === newEntry.applicationId);
+        if (newAppIndex === -1) return; // Should not happen
+
+        const updatedNewEntry: JournalEntry = {
+          ...entryToMove,
+          date: entryDate,
+          content: newEntry.content,
+          questions: questionsList,
+          outcome: newEntry.outcome,
+        };
+
+        const updatedNewApp = {
+          ...applications[newAppIndex],
+          journalEntries: [...applications[newAppIndex].journalEntries, updatedNewEntry]
+        };
+
+        try {
+          await db.saveApplication(updatedOldApp);
+          await db.saveApplication(updatedNewApp);
+
+          const newApps = [...applications];
+          newApps[appIndex] = updatedOldApp;
+          newApps[newAppIndex] = updatedNewApp;
+          setApplications(newApps);
+        } catch (err) {
+          console.error("Failed to move entry", err);
+        }
+
+      } else {
+        // Same app, just update
+        const updatedApp = {
+          ...applications[appIndex],
+          journalEntries: updatedEntries
+        };
+
+        try {
+          await db.saveApplication(updatedApp);
+          const newApps = [...applications];
+          newApps[appIndex] = updatedApp;
+          setApplications(newApps);
+        } catch (err) {
+          console.error('Failed to update journal entry', err);
+          alert('Failed to update journal entry');
+        }
+      }
+    } else {
+      // Create new
+      const entry: JournalEntry = {
+        id: crypto.randomUUID(),
+        date: entryDate,
+        content: newEntry.content,
+        questions: questionsList,
+        outcome: newEntry.outcome,
+      };
+
+      // Find app and update
+      const appIndex = applications.findIndex(a => a.id === newEntry.applicationId);
+      if (appIndex === -1) return;
+
+      const updatedApp = {
+        ...applications[appIndex],
+        journalEntries: [...applications[appIndex].journalEntries, entry]
+      };
+
+      try {
+        await db.saveApplication(updatedApp);
+        const newApps = [...applications];
+        newApps[appIndex] = updatedApp;
+        setApplications(newApps);
+      } catch (err) {
+        console.error('Failed to save journal entry', err);
+        alert('Failed to save journal entry');
+      }
+    }
+
+    setNewEntry({
+      applicationId: '',
+      date: new Date().toISOString().split('T')[0],
+      content: '',
+      questions: '',
+      outcome: ''
+    });
+    setEditingEntry(null);
+  };
+
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(new Set());
+
+  const toggleExpandEntry = (id: string) => {
+    const newSet = new Set(expandedEntryIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setExpandedEntryIds(newSet);
+  };
+
+  const [expandedQuestionEntryIds, setExpandedQuestionEntryIds] = useState<Set<string>>(new Set());
+
+  const toggleExpandQuestions = (id: string) => {
+    const newSet = new Set(expandedQuestionEntryIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setExpandedQuestionEntryIds(newSet);
+  };
+
+  const deleteJournalEntry = async (appId: string, entryId: string) => {
+    if (!window.confirm('Delete this journal entry?')) return;
+
+    const appIndex = applications.findIndex(a => a.id === appId);
+    if (appIndex === -1) return;
+
+    const updatedApp = {
+      ...applications[appIndex],
+      journalEntries: applications[appIndex].journalEntries.filter(e => e.id !== entryId)
     };
-    setApplications(applications.map(app =>
-      app.id === newEntry.applicationId
-        ? { ...app, journalEntries: [...app.journalEntries, entry] }
-        : app
-    ));
-    setNewEntry({ applicationId: '', content: '', questions: '', outcome: '' });
+
+    try {
+      await db.saveApplication(updatedApp);
+      const newApps = [...applications];
+      newApps[appIndex] = updatedApp;
+      setApplications(newApps);
+    } catch (err) {
+      console.error('Failed to delete journal entry', err);
+      alert('Failed to delete journal entry');
+    }
   };
 
   // Flatten entries for timeline view
   const allEntries = applications.flatMap(app =>
-    app.journalEntries.map((entry: JournalEntry) => ({ ...entry, appCompany: app.company, appPosition: app.position }))
+    app.journalEntries.map((entry: JournalEntry) => ({ ...entry, appId: app.id, appCompany: app.company, appPosition: app.position }))
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
@@ -42,7 +217,7 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
       {/* Left Column: Add Entry Form */}
       <div className="lg:col-span-1">
         <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 sticky top-8">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">New Entry</h2>
+          <h2 className="text-xl font-bold text-slate-800 mb-4">{editingEntry ? 'Edit Entry' : 'New Entry'}</h2>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Application</label>
@@ -59,6 +234,16 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={newEntry.date}
+                onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })}
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
               <textarea
                 placeholder="What happened during the interview?"
@@ -69,13 +254,12 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Questions Asked</label>
-              <input
-                type="text"
-                placeholder="Comma-separated questions"
+              <label className="block text-sm font-medium text-slate-700 mb-1">Questions Asked (One per line)</label>
+              <textarea
+                placeholder="Question 1&#10;Question 2&#10;Question 3"
                 value={newEntry.questions}
                 onChange={(e) => setNewEntry({ ...newEntry, questions: e.target.value })}
-                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px]"
               />
             </div>
 
@@ -90,12 +274,31 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
               />
             </div>
 
-            <button
-              onClick={addJournalEntry}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-md font-medium transition-colors"
-            >
-              Add Entry
-            </button>
+            <div className="flex gap-2">
+              {editingEntry && (
+                <button
+                  onClick={() => {
+                    setEditingEntry(null);
+                    setNewEntry({
+                      applicationId: '',
+                      date: new Date().toISOString().split('T')[0],
+                      content: '',
+                      questions: '',
+                      outcome: ''
+                    });
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-md font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={saveJournalEntry}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-md font-medium transition-colors"
+              >
+                {editingEntry ? 'Update Entry' : 'Add Entry'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -118,8 +321,25 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
                 </div>
 
                 {/* Card */}
-                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                  <div className="flex justify-between items-start mb-2">
+                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-lg border border-slate-200 shadow-sm relative group/card">
+                  <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => startEditing(entry)}
+                      className="text-slate-400 hover:text-indigo-600"
+                      title="Edit Entry"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => deleteJournalEntry(entry.appId, entry.id)}
+                      className="text-slate-400 hover:text-red-500"
+                      title="Delete Entry"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-start mb-2 pr-12">
                     <div>
                       <h3 className="font-bold text-slate-800">{entry.appCompany}</h3>
                       <p className="text-xs text-slate-500">{entry.appPosition}</p>
@@ -127,14 +347,37 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
                     <time className="text-xs font-medium text-indigo-500">{new Date(entry.date).toLocaleDateString()}</time>
                   </div>
 
-                  <p className="text-slate-600 text-sm mb-3">{entry.content}</p>
+                  <div
+                    className={`text-slate-600 text-sm mb-3 whitespace-pre-wrap transition-all cursor-pointer ${expandedEntryIds.has(entry.id) ? '' : 'line-clamp-3'}`}
+                    onClick={() => toggleExpandEntry(entry.id)}
+                    title={expandedEntryIds.has(entry.id) ? "Click to collapse" : "Click to expand"}
+                  >
+                    {entry.content}
+                  </div>
+                  {entry.content.length > 150 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleExpandEntry(entry.id); }}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 mb-3 block focus:outline-none"
+                    >
+                      {expandedEntryIds.has(entry.id) ? 'Show Less' : 'Show More'}
+                    </button>
+                  )}
 
                   {entry.questions.length > 0 && (
                     <div className="mb-3 bg-slate-50 p-2 rounded text-xs">
-                      <span className="font-semibold text-slate-700 block mb-1">Questions:</span>
-                      <ul className="list-disc list-inside text-slate-600">
-                        {entry.questions.map((q: string, i: number) => <li key={i}>{q}</li>)}
-                      </ul>
+                      <div
+                        className="flex justify-between items-center cursor-pointer select-none"
+                        onClick={(e) => { e.stopPropagation(); toggleExpandQuestions(entry.id); }}
+                      >
+                        <span className="font-semibold text-slate-700 block mb-1">Questions ({entry.questions.length})</span>
+                        <span className="text-slate-500 text-[10px]">{expandedQuestionEntryIds.has(entry.id) ? '▼' : '▶'}</span>
+                      </div>
+
+                      {expandedQuestionEntryIds.has(entry.id) && (
+                        <ul className="list-disc list-inside text-slate-600 mt-1">
+                          {entry.questions.map((q: string, i: number) => <li key={i}>{q}</li>)}
+                        </ul>
+                      )}
                     </div>
                   )}
 

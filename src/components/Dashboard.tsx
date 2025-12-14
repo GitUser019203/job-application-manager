@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Application, Resume } from './types';
+import { db } from '../utils/db';
 import Preview from './MarkdownPreview';
 
 interface DashboardProps {
@@ -19,6 +20,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     jobUrl: '',
     jobDescription: '',
     coverLetter: '',
+    date: new Date().toISOString().split('T')[0],
   });
 
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -27,31 +29,109 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
   const [reviewResult, setReviewResult] = useState<string | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
-  const addApplication = () => {
-    if (!newApplication.company || !newApplication.position) return;
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-    const newApp: Application = {
-      id: crypto.randomUUID(),
-      company: newApplication.company,
-      position: newApplication.position,
-      status: 'Submitted',
-      submissionDate: new Date().toISOString(),
-      resumeId: newApplication.resumeId,
-      notes: [],
-      journalEntries: [],
-      jobUrl: newApplication.jobUrl,
-      jobDescription: newApplication.jobDescription,
-      coverLetter: newApplication.coverLetter,
-    };
-    setApplications([...applications, newApp]);
-    setNewApplication({ company: '', position: '', resumeId: '', jobUrl: '', jobDescription: '', coverLetter: '' });
-    setIsAdding(false);
+  const startEditing = (app: Application) => {
+    setNewApplication({
+      company: app.company,
+      position: app.position,
+      resumeId: app.resumeId || '',
+      jobUrl: app.jobUrl || '',
+      jobDescription: app.jobDescription || '',
+      coverLetter: app.coverLetter || '',
+      date: new Date(app.submissionDate).toISOString().split('T')[0],
+    });
+    setEditingId(app.id);
+    setIsAdding(true);
   };
 
-  const updateStatus = (id: string, status: Application['status']) => {
-    setApplications(applications.map(app =>
-      app.id === id ? { ...app, status } : app
-    ));
+  const saveApplication = async () => {
+    if (!newApplication.company || !newApplication.position) return;
+
+    if (editingId) {
+      // Update existing
+      const updatedApp = applications.find(a => a.id === editingId);
+      if (!updatedApp) return;
+
+      const finalApp: Application = {
+        ...updatedApp,
+        company: newApplication.company,
+        position: newApplication.position,
+        resumeId: newApplication.resumeId,
+        jobUrl: newApplication.jobUrl,
+        jobDescription: newApplication.jobDescription,
+        coverLetter: newApplication.coverLetter,
+        submissionDate: new Date(newApplication.date + 'T12:00:00').toISOString(),
+      };
+
+      try {
+        await db.saveApplication(finalApp);
+        setApplications(applications.map(a => a.id === editingId ? finalApp : a));
+      } catch (err) {
+        console.error("Failed to update app", err);
+        alert("Failed to update application");
+      }
+    } else {
+      // Create new
+      const newApp: Application = {
+        id: crypto.randomUUID(),
+        company: newApplication.company,
+        position: newApplication.position,
+        status: 'Submitted',
+        submissionDate: new Date(newApplication.date + 'T12:00:00').toISOString(),
+        resumeId: newApplication.resumeId,
+        notes: [],
+        journalEntries: [],
+        jobUrl: newApplication.jobUrl,
+        jobDescription: newApplication.jobDescription,
+        coverLetter: newApplication.coverLetter,
+      };
+
+      try {
+        await db.saveApplication(newApp);
+        setApplications([...applications, newApp]);
+      } catch (err) {
+        console.error("Failed to save new app", err);
+        alert("Failed to save new application");
+      }
+    }
+
+    setNewApplication({
+      company: '',
+      position: '',
+      resumeId: '',
+      jobUrl: '',
+      jobDescription: '',
+      coverLetter: '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setIsAdding(false);
+    setEditingId(null);
+  };
+
+  const updateStatus = async (id: string, status: Application['status']) => {
+    const app = applications.find(a => a.id === id);
+    if (!app) return;
+    const updated = { ...app, status };
+
+    try {
+      await db.saveApplication(updated);
+      setApplications(applications.map(a => a.id === id ? updated : a));
+    } catch (err) {
+      console.error("Failed to update status", err);
+    }
+  };
+
+  const handleDeleteApplication = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this application?')) {
+      try {
+        await db.deleteApplication(id);
+        setApplications(applications.filter(app => app.id !== id));
+      } catch (error) {
+        console.error('Failed to delete application:', error);
+        alert('Failed to delete application');
+      }
+    }
   };
 
   const toggleExpand = (id: string) => {
@@ -197,17 +277,31 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
           </select>
         </div>
         <button
-          onClick={() => setIsAdding(!isAdding)}
+          onClick={() => {
+            setIsAdding(!isAdding);
+            if (!isAdding) {
+              setEditingId(null);
+              setNewApplication({
+                company: '',
+                position: '',
+                resumeId: '',
+                jobUrl: '',
+                jobDescription: '',
+                coverLetter: '',
+                date: new Date().toISOString().split('T')[0]
+              });
+            }
+          }}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
         >
           {isAdding ? 'Cancel' : '+ Add Application'}
         </button>
       </div>
 
-      {/* Add Application Form */}
+      {/* Add/Edit Application Form */}
       {isAdding && (
         <div className="bg-white p-6 rounded-lg shadow-md border border-indigo-100 mb-8 animate-fade-in-down">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">New Application</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">{editingId ? 'Edit Application' : 'New Application'}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Company *</label>
@@ -229,7 +323,16 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 placeholder="e.g. Frontend Engineer"
               />
             </div>
-            <div className="md:col-span-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Date Applied</label>
+              <input
+                type="date"
+                value={newApplication.date}
+                onChange={(e) => setNewApplication({ ...newApplication, date: e.target.value })}
+                className="w-full border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Job Posting URL</label>
               <input
                 type="url"
@@ -239,7 +342,8 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 placeholder="https://..."
               />
             </div>
-            <div>
+
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Resume Used</label>
               <select
                 value={newApplication.resumeId}
@@ -248,7 +352,9 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
               >
                 <option value="">Select Resume...</option>
                 {resumes.map(resume => (
-                  <option key={resume.id} value={resume.id}>{resume.name}</option>
+                  <option key={resume.id} value={resume.id}>
+                    {resume.name} {resume.tags && resume.tags.length > 0 ? `(${resume.tags.join(', ')})` : ''}
+                  </option>
                 ))}
               </select>
             </div>
@@ -273,12 +379,30 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
               />
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             <button
-              onClick={addApplication}
+              onClick={() => {
+                setIsAdding(false);
+                setEditingId(null);
+                setNewApplication({
+                  company: '',
+                  position: '',
+                  resumeId: '',
+                  jobUrl: '',
+                  jobDescription: '',
+                  coverLetter: '',
+                  date: new Date().toISOString().split('T')[0]
+                });
+              }}
+              className="text-slate-600 hover:text-slate-800 px-4 py-2 rounded-md text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveApplication}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md text-sm font-medium"
             >
-              Save Application
+              {editingId ? 'Update Application' : 'Save Application'}
             </button>
           </div>
         </div>
@@ -298,13 +422,26 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                   <h3 className="font-bold text-lg text-slate-800">{app.company}</h3>
                   <p className="text-slate-600 font-medium">{app.position}</p>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(app.status)}`}>
-                  {app.status}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(app.status)}`}>
+                    {app.status}
+                  </span>
+                  <button
+                    onClick={() => startEditing(app)}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
 
               <div className="text-sm text-slate-500 mb-4 flex-1">
-                <p>Applied: {new Date(app.submissionDate).toLocaleDateString()}</p>
+                <p>
+                  Applied: {new Date(app.submissionDate).toLocaleDateString()}
+                  <span className="ml-2 text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">
+                    {Math.floor((new Date().getTime() - new Date(app.submissionDate).getTime()) / (1000 * 3600 * 24))} days ago
+                  </span>
+                </p>
                 {app.resumeId && (
                   <p className="mt-1 text-xs">
                     Resume: {resumes.find(r => r.id === app.resumeId)?.name || 'Unknown'}
@@ -366,18 +503,30 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 </div>
               )}
 
-              <div className="pt-4 border-t border-slate-100 mt-auto">
-                <label className="block text-xs font-medium text-slate-500 mb-1">Update Status</label>
-                <select
-                  value={app.status}
-                  onChange={(e) => updateStatus(app.id, e.target.value as Application['status'])}
-                  className="w-full border-slate-200 rounded text-sm py-1 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="Submitted">Submitted</option>
-                  <option value="Interviewing">Interviewing</option>
-                  <option value="Rejected">Rejected</option>
-                  <option value="Offer Received">Offer Received</option>
-                </select>
+              <div className="pt-4 border-t border-slate-100 mt-auto flex justify-between items-center gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Update Status</label>
+                  <select
+                    value={app.status}
+                    onChange={(e) => updateStatus(app.id, e.target.value as Application['status'])}
+                    className="w-full border-slate-200 rounded text-sm py-1 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="Submitted">Submitted</option>
+                    <option value="Interviewing">Interviewing</option>
+                    <option value="Rejected">Rejected</option>
+                    <option value="Offer Received">Offer Received</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-transparent mb-1">Action</label>
+                  <button
+                    onClick={() => handleDeleteApplication(app.id)}
+                    className="text-white bg-red-500 hover:bg-red-600 p-1.5 rounded transition-colors text-xs"
+                    title="Delete Application"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
             </div>
           ))}

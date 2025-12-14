@@ -1,95 +1,77 @@
 # Job Application Manager
 
-A React + TypeScript application for tracking job applications, editing resumes, and journaling interview experiences.  
-This project evolved through multiple redesigns and enhancements, integrating persistent storage, modern UI/UX, and advanced resume editing tools.
+A secure, full-featured React + TypeScript web app for tracking job applications, managing resumes, and preparing for interviews — with **zero-knowledge client-side encryption** and an optional authentication wall.
 
 ---
 
 ## ✨ Features
 
-### 📊 Application Tracker Dashboard
-- Track job applications with statuses: **Submitted**, **Interviewing**, **Rejected**, **Offer Received**
-- **New:** Store **Job Description** and **Cover Letter** for each application
-- **New:** Save direct **Job Posting URLs**
-- **New:** **Markdown support** for rich text formatting in descriptions and cover letters
-- **New:** **AI Resume Review:** Use your own Google Gemini API key to get instant feedback on your application's alignment with the job description.
-- Stats overview (total applications, active interviews, offers)
-- Add new applications with validation and resume association
-- Update status directly from application cards
-- Responsive grid layout with styled status badges
+### 🔒 Security & Privacy
+- **Full Client-Side Encryption**: All data (applications, resumes, journals, prep questions) encrypted in IndexedDB using **AES-GCM** with **PBKDF2**-derived keys from a user-set password.
+- **Zero-Knowledge Design**: Encryption keys never leave your browser or touch the server.
+- **Password Management**: Change password (re-encrypts all data) or securely wipe everything via Settings.
+- **Firebase Authentication**: Email/password login.
+
+### 📊 Application Dashboard
+- Track applications with statuses (Submitted, Interviewing, Rejected, Offer)
+- Store job description, cover letter (Markdown-supported), and posting URL
+- AI resume review via Google Gemini (ephemeral API key)
+- Stats, edit/delete, days-since-applied badges
 
 ### 📝 Resume Editor
-- Create and edit resumes with **Markdown input and live preview**
-- Split-panel editing and full-screen preview modal
-- Resume versioning system with tagging by skill focus
-- Toolbox sidebar for managing items (projects, skills, education, etc.)
-  - Add, edit, and delete items inline
-- Save resumes as **HTML files** with Tailwind CSS styling
-- Conditional formatting for sections (headers, separators, blockquotes)
+- Markdown editor with live preview and full-screen mode
+- **.docx Import**: Upload Word resumes → auto-converted to Markdown via backend
+- **PDF Export**: Generate formatted PDFs server-side (Pandoc)
+- Smart header fields (Name, Phone, Email, LinkedIn)
+- Resume versioning, reusable item toolbox, HTML export with styling
 
-### 📔 Interview Journal
-- Record interview notes linked to applications
-- Add questions asked and outcomes
-- Timeline view of all journal entries with styled cards
-- Validation for required fields (application, notes, etc.)
+### 🎯 Interview Preparation
+- Dedicated prep tab with searchable, filterable question bank
+- Full-screen practice mode
+- Journal timeline for notes, questions asked, and outcomes (edit/delete)
 
-### 💾 Persistent Storage
-- Integrated database layer (`utils/db`) for applications, resumes, and items
-- Auto-save hooks with `useEffect` to persist state changes
-- Status indicator in sidebar showing sync state
-
-### 🎨 UI/UX Enhancements
-- Sidebar navigation with icons and active state styling
-- Responsive layouts for Dashboard, Resume Editor, and Interview Journal
-- Tailwind CSS styling with typography plugin for Markdown rendering
-- Improved visual feedback and usability across components
+### ⚙️ Settings & UX
+- Responsive tabbed interface with sidebar navigation
+- Data export/import (encrypted JSON backup)
+- Status indicators and polished Tailwind UI
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (>= 16.x)
-- npm or yarn
-
-### Installation
-```
-git clone <repository-url>
-cd job-application-manager
-npm install
-```
-
-### Development
-```
-npm start
-```
-Runs the app in development mode.  
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- Node.js (≥18 recommended).
+- Install packages:
+  ```bash
+  npm i
+  sudo npm install -g serve
+  ```
+- Python 3.x
+- `markitdown` for document conversion:
+  ```bash
+  pip install markitdown[docx]
+  ```
+- Install pandoc and xelatex for document conversion: https://pandoc.org/installing.html
+- Add your Firebase profile in `src/firebase.ts`.
 
 ### Build
 ```
 npm run build
 ```
-Builds the app for production.
 
+### Serve (Windows)
+```
+.\run.ps1
+```
 
-## 🛠️ Technologies Used
-- **React** (with Hooks)
-- **TypeScript**
-- **Tailwind CSS** (with typography plugin)
-- **ReactMarkdown** + plugins (`rehype-raw`, `markdown-it`)
-- **Indexed DB integration** for persistent storage
+OR you can use a Desktop shortcut
 
----
+```
+.\create_shortcut.ps1
+```
 
-## 📈 Roadmap
-- 🔒 Authentication and cloud storage integration
-- 📤 Export resumes to PDF
-- 📅 Calendar integration for interview scheduling
-- 🔔 Notifications and reminders
-
----
-
-## 📜 License
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
+### Serve (Linux)
+```bash
+chmod +x run.sh
+./run.sh
+```

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Resume, ItemType } from './types';
 import MarkdownPreview from './MarkdownPreview';
 import { saveToHTML } from '../utils/htmlUtils';
 import { parseResumeContent, compileResumeContent } from '../utils/resumeUtils';
+import { db } from '../utils/db';
 
 interface ResumeEditorProps {
   resumes: Resume[];
@@ -16,6 +17,22 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
   const [previewResumeId, setPreviewResumeId] = useState<string | null>(null);
   const [addingItemType, setAddingItemType] = useState<ItemType | null>(null);
   const [newItemContent, setNewItemContent] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDeleteResume = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this resume?')) {
+      try {
+        await db.deleteResume(id);
+        setResumes(resumes.filter(r => r.id !== id));
+        if (editingResume?.id === id) {
+          setEditingResume(null);
+        }
+      } catch (error) {
+        console.error('Failed to delete resume:', error);
+        alert('Failed to delete resume');
+      }
+    }
+  };
 
   // Ensure editingResume has sections
   useEffect(() => {
@@ -39,6 +56,48 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
         tags: [],
         isNew: true,
       });
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('https://localhost:3001/api/convert-resume', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to convert resume');
+      }
+
+      const data = await response.json();
+      const markdown = data.markdown;
+      const sections = parseResumeContent(markdown);
+      const compiledContent = compileResumeContent(sections);
+
+      const newResume = {
+        id: crypto.randomUUID(),
+        name: file.name.replace('.docx', ''),
+        content: compiledContent,
+        sections: sections,
+        tags: ['imported'],
+        isNew: true,
+      };
+
+      setEditingResume(newResume);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Failed to import resume. Please ensure the backend server is running.');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -102,6 +161,100 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     }
   };
 
+  function convertResumeHeaderToLaTeX(content: string) {
+    // Generic regex to match the HTML header block:
+    // <div class="text-center"><h1>Any Name</h1></div>
+    // optional dashes + whitespace
+    // <div class="flex justify-between w-full">
+    //   <span>Phone</span>
+    //   <span>Email</span>
+    //   <span>LinkedIn</span>
+    // </div>
+    //
+    // Captures:
+    //   group 1: Name
+    //   group 2: Phone
+    //   group 3: Email
+    //   group 4: LinkedIn
+
+    const headerRegex = new RegExp(
+      '<div[^>]*class=["\'][^"\']*text-center[^"\']*["\'][^>]*>' + // opening div with text-center
+      '\\s*<h1>\\s*([\\s\\S]*?)\\s*</h1>\\s*' +                     // capture name
+      '</div>' +
+      '\\s*-+\\s*' +                                              // dashes
+      '<div[^>]*class=["\'][^"\']*flex\\s+justify-between\\s+w-full[^"\']*["\'][^>]*>' +
+      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture phone
+      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture email
+      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture linkedin
+      '\\s*</div>',
+      'gi'
+    );
+
+    return content.replace(headerRegex, (match, name, phone, email, linkedin) => {
+      // Trim whitespace from captured values
+      name    = name.trim();
+      phone   = phone.trim();
+      email   = email.trim();
+      linkedin = linkedin.trim();
+
+      // Return professional LaTeX header
+      return `
+  \\begin{center}
+    {\\huge\\bfseries ${name}}
+  \\end{center}
+
+  \\vspace{2em}
+
+  \\begin{center}
+    ${phone} \\hfill ${email} \\hfill ${linkedin}
+  \\end{center}
+
+  \\vspace{3em}`.trim();
+    });
+  }
+
+  const saveToPDF = async (content: string) => {
+    try {
+      const header = `---
+header-includes:
+  - \\let\\oldrule\\rule
+  - \\renewcommand{\\rule}[2]{\\oldrule{\\linewidth}{#2}}
+  - \\usepackage{titling}
+  - \\pretitle{\\begin{center}\\LARGE\\bfseries}
+  - \\posttitle{\\end{center}\\vspace{1em}}
+  - \\preauthor{}
+  - \\postauthor{}
+  - \\predate{}
+  - \\postdate{}
+---
+`
+      const response = await fetch('https://localhost:3001/api/convert-to-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ markdown: header + convertResumeHeaderToLaTeX(content) }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to convert to PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${editingResume?.name || 'resume'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF. Ensure pandoc is installed on the server.');
+    }
+  };
+
   const addItem = () => {
     if (addingItemType && newItemContent.trim()) {
       setItems({
@@ -154,12 +307,27 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
       {/* Left Sidebar: Resume List */}
       <div className="w-64 bg-white border-r border-slate-200 p-4 overflow-y-auto flex-shrink-0">
         <h2 className="text-lg font-bold mb-4 text-slate-800">Resumes</h2>
-        <button
-          onClick={() => startEditing()}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded mb-4 transition-colors text-sm font-medium"
-        >
-          + New Resume
-        </button>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => startEditing()}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded transition-colors text-sm font-medium"
+          >
+            + New
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 p-2 rounded transition-colors text-sm font-medium"
+          >
+            Import .docx
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".docx"
+            onChange={handleFileUpload}
+          />
+        </div>
         <div className="space-y-2">
           {resumes.map(resume => (
             <div
@@ -177,6 +345,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
                   className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                 >
                   Preview
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteResume(resume.id); }}
+                  className="text-xs text-red-500 hover:text-red-700 font-medium ml-3"
+                >
+                  Delete
                 </button>
               </div>
             </div>
@@ -202,6 +376,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
                 </button>
                 <button onClick={() => saveToHTML(editingResume.content)} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
                   Export HTML
+                </button>
+                <button onClick={() => saveToPDF(editingResume.content)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
+                  Export PDF
                 </button>
               </div>
             </div>
@@ -245,12 +422,90 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
                         </button>
                       )}
                     </div>
-                    <textarea
-                      value={content}
-                      onChange={(e) => updateSection(title, e.target.value)}
-                      className="w-full border-slate-300 p-2 rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
-                      rows={5}
-                    />
+
+                    {title === 'Header' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">Full Name</label>
+                          <input
+                            type="text"
+                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="John Doe"
+                            value={content.match(/<h1>(.*?)<\/h1>/)?.[1] || ''}
+                            onChange={(e) => {
+                              const newName = e.target.value;
+                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
+                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
+                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
+
+                              const newHtml = `<div class="text-center"><h1>${newName}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${email}</span>\n  <span>${linkedin}</span>\n</div>`;
+                              updateSection('Header', newHtml);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Phone</label>
+                          <input
+                            type="text"
+                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="(555) 123-4567"
+                            value={content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || ''}
+                            onChange={(e) => {
+                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
+                              const newPhone = e.target.value;
+                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
+                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
+
+                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${newPhone}</span>\n  <span>${email}</span>\n  <span>${linkedin}</span>\n</div>`;
+                              updateSection('Header', newHtml);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Email</label>
+                          <input
+                            type="text"
+                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="john@example.com"
+                            value={content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || ''}
+                            onChange={(e) => {
+                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
+                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
+                              const newEmail = e.target.value;
+                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
+
+                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${newEmail}</span>\n  <span>${linkedin}</span>\n</div>`;
+                              updateSection('Header', newHtml);
+                            }}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs text-slate-500 mb-1">LinkedIn (URL or User)</label>
+                          <input
+                            type="text"
+                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            placeholder="linkedin.com/in/johndoe"
+                            value={content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || ''}
+                            onChange={(e) => {
+                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
+                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
+                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
+                              const newLinkedin = e.target.value;
+
+                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${email}</span>\n  <span>${newLinkedin}</span>\n</div>`;
+                              updateSection('Header', newHtml);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <textarea
+                        value={content}
+                        onChange={(e) => updateSection(title, e.target.value)}
+                        className="w-full border-slate-300 p-2 rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                        rows={5}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

@@ -1,10 +1,12 @@
-import { Application, Resume, ItemType } from '../components/types';
+import { Application, Resume, ItemType, PrepQuestion } from '../components/types';
+import { encryptData, decryptData } from './cryptoUtils';
 
 const DB_NAME = 'JobAppManagerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Increment version for prepQuestions store
 
 export class DB {
     private db: IDBDatabase | null = null;
+    private key: CryptoKey | null = null;
 
     async init(): Promise<void> {
         return new Promise((resolve, reject) => {
@@ -32,7 +34,55 @@ export class DB {
                 if (!db.objectStoreNames.contains('items')) {
                     db.createObjectStore('items', { keyPath: 'type' });
                 }
+                if (!db.objectStoreNames.contains('metadata')) {
+                    db.createObjectStore('metadata', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('prepQuestions')) {
+                    db.createObjectStore('prepQuestions', { keyPath: 'id' });
+                }
             };
+        });
+    }
+
+    setKey(key: CryptoKey) {
+        this.key = key;
+    }
+
+    async getSalt(): Promise<Uint8Array | null> {
+        return new Promise((resolve, reject) => {
+            if (!this.db) return reject('DB not initialized');
+            const tx = this.db.transaction('metadata', 'readonly');
+            const store = tx.objectStore('metadata');
+            const req = store.get('salt');
+            req.onsuccess = () => resolve(req.result ? new Uint8Array(req.result.value) : null);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async setSalt(salt: Uint8Array): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!this.db) return reject('DB not initialized');
+            const tx = this.db.transaction('metadata', 'readwrite');
+            const store = tx.objectStore('metadata');
+            const req = store.put({ id: 'salt', value: Array.from(salt) });
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async clearDatabase(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!this.db) return reject('DB not initialized');
+            const tx = this.db.transaction(['applications', 'resumes', 'items', 'metadata', 'prepQuestions'], 'readwrite');
+
+            tx.objectStore('applications').clear();
+            tx.objectStore('resumes').clear();
+            tx.objectStore('items').clear();
+            tx.objectStore('metadata').clear();
+            tx.objectStore('prepQuestions').clear();
+
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
         });
     }
 
@@ -42,21 +92,61 @@ export class DB {
         return transaction.objectStore(storeName);
     }
 
-    // Applications
-    async getApplications(): Promise<Application[]> {
+    // Generic Encrypted Helpers
+    private async saveEncrypted(storeName: string, item: any): Promise<void> {
+        if (!this.key) throw new Error('Encryption key not set');
+        // Encrypt everything except ID? Or just wrap it.
+        // We need ID for keyPath.
+        const id = item.id || item.type; // resumes/apps have id, items have type
+        if (!id) throw new Error('Item missing ID');
+
+        const encrypted = await encryptData(item, this.key);
+
         return new Promise((resolve, reject) => {
-            const request = this.getStore('applications').getAll();
-            request.onsuccess = () => resolve(request.result);
+            const request = this.getStore(storeName, 'readwrite').put({
+                id: id,
+                // store original key if different from id (like type for items)
+                type: item.type,
+                encrypted: encrypted
+            });
+            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
     }
 
-    async saveApplication(application: Application): Promise<void> {
+    private async getDecrypted<T>(storeName: string): Promise<T[]> {
         return new Promise((resolve, reject) => {
-            const request = this.getStore('applications', 'readwrite').put(application);
-            request.onsuccess = () => resolve();
+            const request = this.getStore(storeName).getAll();
+            request.onsuccess = async () => {
+                try {
+                    const results = request.result;
+                    if (!results.length) return resolve([]);
+
+                    // Check if encrypted
+                    if (results[0].encrypted && this.key) {
+                        const decrypted = await Promise.all(results.map(r => decryptData(r.encrypted, this.key!)));
+                        resolve(decrypted);
+                    } else if (results[0].encrypted && !this.key) {
+                        reject('Data is encrypted but no key provided');
+                    } else {
+                        // Plain text (migration needs to happen if key is set?)
+                        resolve(results as T[]);
+                    }
+                } catch (e) {
+                    reject(e);
+                }
+            };
             request.onerror = () => reject(request.error);
         });
+    }
+
+    // Applications
+    async getApplications(): Promise<Application[]> {
+        return this.getDecrypted<Application>('applications');
+    }
+
+    async saveApplication(application: Application): Promise<void> {
+        return this.saveEncrypted('applications', application);
     }
 
     async deleteApplication(id: string): Promise<void> {
@@ -69,19 +159,11 @@ export class DB {
 
     // Resumes
     async getResumes(): Promise<Resume[]> {
-        return new Promise((resolve, reject) => {
-            const request = this.getStore('resumes').getAll();
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
+        return this.getDecrypted<Resume>('resumes');
     }
 
     async saveResume(resume: Resume): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const request = this.getStore('resumes', 'readwrite').put(resume);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
+        return this.saveEncrypted('resumes', resume);
     }
 
     async deleteResume(id: string): Promise<void> {
@@ -94,35 +176,46 @@ export class DB {
 
     // Items
     async getItems(): Promise<Record<ItemType, any[]>> {
-        return new Promise((resolve, reject) => {
-            const request = this.getStore('items').getAll();
-            request.onsuccess = () => {
-                const results = request.result as { type: ItemType; items: any[] }[];
-                const itemsRecord: Record<ItemType, any[]> = {
-                    projects: [],
-                    skills: [],
-                    education: [],
-                    'certificates & awards': [],
-                    bootcamps: [],
-                    volunteering: [],
-                    'experience': [],
-                    coursework: [],
-                };
+        const rawItems = await this.getDecrypted<{ type: ItemType; items: any[] }>('items');
 
-                results.forEach(row => {
-                    if (itemsRecord[row.type] !== undefined) {
-                        itemsRecord[row.type] = row.items;
-                    }
-                });
-                resolve(itemsRecord);
-            };
-            request.onerror = () => reject(request.error);
+        const itemsRecord: Record<ItemType, any[]> = {
+            projects: [],
+            skills: [],
+            education: [],
+            'certificates & awards': [],
+            bootcamps: [],
+            volunteering: [],
+            'experience': [],
+            coursework: [],
+        };
+
+        rawItems.forEach(row => {
+            if (itemsRecord[row.type] !== undefined) {
+                itemsRecord[row.type] = row.items;
+            }
         });
+        return itemsRecord;
     }
 
     async saveItems(type: ItemType, items: any[]): Promise<void> {
+        if (!this.key) throw new Error('Encryption key not set');
+        // Structure for Items store needs to match what we expect
+        const itemObj = { id: type, type, items };
+        return this.saveEncrypted('items', itemObj);
+    }
+
+    // Prep Questions
+    async getPrepQuestions(): Promise<PrepQuestion[]> {
+        return this.getDecrypted<PrepQuestion>('prepQuestions');
+    }
+
+    async savePrepQuestion(question: PrepQuestion): Promise<void> {
+        return this.saveEncrypted('prepQuestions', question);
+    }
+
+    async deletePrepQuestion(id: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            const request = this.getStore('items', 'readwrite').put({ type, items });
+            const request = this.getStore('prepQuestions', 'readwrite').delete(id);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });

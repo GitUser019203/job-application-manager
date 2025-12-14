@@ -31,3 +31,14 @@ export interface Resume {
 }
 
 export type ItemType = 'projects' | 'skills' | 'education' | 'certificates & awards' | 'bootcamps' | 'volunteering' | 'experience' | 'coursework';
+
+export type PrepCategory = 'STAR' | 'Behavioral' | 'Technical';
+
+export interface PrepQuestion {
+  id: string;
+  questions: string[];
+  answer: string;
+  category: PrepCategory;
+  dateAdded: string;
+  sources?: string[];
+}
