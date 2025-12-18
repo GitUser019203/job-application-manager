@@ -13,6 +13,7 @@ const InterviewPrep: React.FC<InterviewPrepProps> = ({ questions, setQuestions }
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [editingId, setEditingId] = useState<string | null>(null);
     const [fullScreenQuestion, setFullScreenQuestion] = useState<PrepQuestion | null>(null);
+    const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
     const [newQuestion, setNewQuestion] = useState<{
         questions: string;
@@ -118,14 +119,20 @@ const InterviewPrep: React.FC<InterviewPrepProps> = ({ questions, setQuestions }
     };
 
     const filteredQuestions = useMemo(() => {
-        return questions.filter(q => {
+        const filtered = questions.filter(q => {
             const matchesSearch = q.questions.some(qn => qn.toLowerCase().includes(searchQuery.toLowerCase())) ||
                 q.answer.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (q.sources && q.sources.some(s => s.toLowerCase().includes(searchQuery.toLowerCase())));
             const matchesCategory = filterCategory === 'All' || q.category === filterCategory;
             return matchesSearch && matchesCategory;
         });
-    }, [questions, searchQuery, filterCategory]);
+
+        return [...filtered].sort((a, b) => {
+            const dateA = new Date(a.dateAdded).getTime();
+            const dateB = new Date(b.dateAdded).getTime();
+            return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+    }, [questions, searchQuery, filterCategory, sortOrder]);
 
     const getCategoryStyles = (category: PrepCategory) => {
         switch (category) {
@@ -229,6 +236,14 @@ const InterviewPrep: React.FC<InterviewPrepProps> = ({ questions, setQuestions }
                             >
                                 <option value="All">All Categories</option>
                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <select
+                                value={sortOrder}
+                                onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+                                className="border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                            >
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
                             </select>
                             <input
                                 type="text"

@@ -192,9 +192,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
 
     return content.replace(headerRegex, (match, name, phone, email, linkedin) => {
       // Trim whitespace from captured values
-      name    = name.trim();
-      phone   = phone.trim();
-      email   = email.trim();
+      name = name.trim();
+      phone = phone.trim();
+      email = email.trim();
       linkedin = linkedin.trim();
 
       // Return professional LaTeX header
@@ -306,7 +306,7 @@ header-includes:
     <div className="flex h-full bg-slate-50 border-t border-slate-200">
       {/* Left Sidebar: Resume List */}
       <div className="w-64 bg-white border-r border-slate-200 p-4 overflow-y-auto flex-shrink-0">
-        <h2 className="text-lg font-bold mb-4 text-slate-800">Resumes</h2>
+        <h2 className="text-lg font-bold mb-4 text-slate-800 pl-10">Resumes</h2>
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => startEditing()}

@@ -11,6 +11,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, resumes }) => {
   const [filter, setFilter] = useState<string>('All');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [isAdding, setIsAdding] = useState(false);
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
   const [newApplication, setNewApplication] = useState({
@@ -205,9 +206,15 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     }
   };
 
+  const sortedApplications = [...applications].sort((a, b) => {
+    const dateA = new Date(a.submissionDate).getTime();
+    const dateB = new Date(b.submissionDate).getTime();
+    return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+  });
+
   const filteredApplications = filter === 'All'
-    ? applications
-    : applications.filter(app => app.status === filter);
+    ? sortedApplications
+    : sortedApplications.filter(app => app.status === filter);
 
   const stats = {
     total: applications.length,
@@ -274,6 +281,17 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
             <option value="Interviewing">Interviewing</option>
             <option value="Rejected">Rejected</option>
             <option value="Offer Received">Offers</option>
+          </select>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm font-medium text-slate-600">Sort:</span>
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+            className="border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
           </select>
         </div>
         <button
@@ -439,7 +457,17 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 <p>
                   Applied: {new Date(app.submissionDate).toLocaleDateString()}
                   <span className="ml-2 text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">
-                    {Math.floor((new Date().getTime() - new Date(app.submissionDate).getTime()) / (1000 * 3600 * 24))} days ago
+                    {(() => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const appliedDate = new Date(app.submissionDate);
+                      appliedDate.setHours(0, 0, 0, 0);
+                      const diffDays = Math.round((today.getTime() - appliedDate.getTime()) / (1000 * 3600 * 24));
+                      if (diffDays === 0) return 'Today';
+                      if (diffDays === 1) return 'Yesterday';
+                      if (diffDays < 0) return 'Future';
+                      return `${diffDays} days ago`;
+                    })()}
                   </span>
                 </p>
                 {app.resumeId && (

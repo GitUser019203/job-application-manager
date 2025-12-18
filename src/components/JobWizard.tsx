@@ -4,6 +4,7 @@ import ResumeEditor from './ResumeEditor';
 import InterviewJournal from './InterviewJournal';
 import LoginScreen from './LoginScreen';
 import InterviewPrep from './InterviewPrep';
+import Analytics from './Analytics';
 import Settings from './Settings';
 import { Application, Resume, ItemType, PrepQuestion } from './types';
 import { db } from '../utils/db';
@@ -23,8 +24,9 @@ const JobWizard: React.FC = () => {
         'experience': [],
         coursework: [],
     });
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'resume' | 'journal' | 'prep' | 'settings'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'resume' | 'journal' | 'prep' | 'analytics' | 'settings'>('dashboard');
     const [isDbInitialized, setIsDbInitialized] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     const loadData = async () => {
         try {
@@ -115,9 +117,9 @@ const JobWizard: React.FC = () => {
     return (
         <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
             {/* Sidebar Navigation */}
-            <aside className="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col">
-                <div className="p-6 border-b border-slate-100">
-                    <div className="flex items-center space-x-2 text-indigo-600">
+            <aside className={`bg-white border-r border-slate-200 flex-shrink-0 flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden border-none'}`}>
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-indigo-600 truncate">
                         <span className="text-2xl">💼</span>
                         <h1 className="text-xl font-bold tracking-tight">Job Manager</h1>
                     </div>
@@ -128,6 +130,7 @@ const JobWizard: React.FC = () => {
                     <NavItem id="resume" label="Resume Editor" icon="📝" />
                     <NavItem id="journal" label="Interview Journal" icon="📓" />
                     <NavItem id="prep" label="Interview Prep" icon="🧠" />
+                    <NavItem id="analytics" label="Analytics" icon="📊" />
                     <NavItem id="settings" label="Settings" icon="⚙️" />
                 </nav>
 
@@ -143,7 +146,27 @@ const JobWizard: React.FC = () => {
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1 overflow-auto relative">
+                {/* Sidebar Toggle Button */}
+                <button
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    className={`absolute top-4 left-4 z-20 p-2 bg-white rounded-md shadow-md border border-slate-200 text-slate-500 hover:text-indigo-600 transition-all duration-300 ${isSidebarOpen ? 'translate-x-[200px] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}
+                    title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}
+                >
+                    {isSidebarOpen ? '«' : '☰'}
+                </button>
+                
+                {/* Header for the page content when sidebar is open */}
+                {isSidebarOpen && (
+                    <button 
+                        onClick={() => setIsSidebarOpen(false)}
+                        className="absolute top-6 left-[-1.5rem] z-20 w-8 h-8 flex items-center justify-center bg-white rounded-full border border-slate-200 shadow-sm text-slate-400 hover:text-indigo-600 transition-all hover:scale-110 active:scale-95"
+                        style={{ left: '-16px' }}
+                        title="Hide Sidebar"
+                    >
+                        «
+                    </button>
+                )}
                 {activeTab === 'dashboard' && (
                     <div className="p-8 max-w-7xl mx-auto">
                         <Dashboard
@@ -173,9 +196,23 @@ const JobWizard: React.FC = () => {
                         <InterviewPrep questions={questions} setQuestions={setQuestions} />
                     </div>
                 )}
+                {activeTab === 'analytics' && (
+                    <div className="p-8 max-w-7xl mx-auto">
+                        <Analytics applications={applications} />
+                    </div>
+                )}
                 {activeTab === 'settings' && (
                     <div className="h-full">
-                        <Settings applications={applications} resumes={resumes} items={items} questions={questions} />
+                        <Settings
+                            applications={applications}
+                            setApplications={setApplications}
+                            resumes={resumes}
+                            setResumes={setResumes}
+                            items={items}
+                            setItems={setItems}
+                            questions={questions}
+                            setQuestions={setQuestions}
+                        />
                     </div>
                 )}
             </main>

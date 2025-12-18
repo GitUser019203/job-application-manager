@@ -18,6 +18,7 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
   });
 
   const [editingEntry, setEditingEntry] = useState<{ entryId: string, appId: string } | null>(null);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   const startEditing = (entry: any) => {
     setNewEntry({
@@ -210,7 +211,11 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
   // Flatten entries for timeline view
   const allEntries = applications.flatMap(app =>
     app.journalEntries.map((entry: JournalEntry) => ({ ...entry, appId: app.id, appCompany: app.company, appPosition: app.position }))
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ).sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+  });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -305,7 +310,20 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
 
       {/* Right Column: Timeline */}
       <div className="lg:col-span-2">
-        <h2 className="text-xl font-bold text-slate-800 mb-6">Journal Timeline</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-slate-800">Journal Timeline</h2>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm font-medium text-slate-600">Sort:</span>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+              className="border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
+        </div>
 
         {allEntries.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-dashed border-slate-300">

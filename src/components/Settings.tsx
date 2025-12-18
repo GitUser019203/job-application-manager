@@ -2,15 +2,25 @@ import React, { useState } from 'react';
 import { db } from '../utils/db';
 import { deriveKey } from '../utils/cryptoUtils';
 import { Application, Resume, ItemType, PrepQuestion } from './types';
+import * as XLSX from 'xlsx';
 
 interface SettingsProps {
     applications: Application[];
+    setApplications: React.Dispatch<React.SetStateAction<Application[]>>;
     resumes: Resume[];
+    setResumes: React.Dispatch<React.SetStateAction<Resume[]>>;
     items: Record<ItemType, any[]>;
+    setItems: React.Dispatch<React.SetStateAction<Record<ItemType, any[]>>>;
     questions: PrepQuestion[];
+    setQuestions: React.Dispatch<React.SetStateAction<PrepQuestion[]>>;
 }
 
-const Settings: React.FC<SettingsProps> = ({ applications, resumes, items, questions }) => {
+const Settings: React.FC<SettingsProps> = ({
+    applications, setApplications,
+    resumes, setResumes,
+    items, setItems,
+    questions, setQuestions
+}) => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [message, setMessage] = useState('');
@@ -123,6 +133,88 @@ const Settings: React.FC<SettingsProps> = ({ applications, resumes, items, quest
         reader.readAsText(file);
     };
 
+    const handleExcelImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsProcessing(true);
+        setMessage('');
+        setError('');
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+
+                const importedApps: Application[] = [];
+
+                workbook.SheetNames.forEach(sheetName => {
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                    jsonData.forEach(row => {
+                        // "Org", "Job", "Applied Date" are mandatory (or at least expected)
+                        // "URL" is optional
+                        const company = row['Org'];
+                        const position = row['Job'];
+                        const dateRaw = row['Applied Date'];
+                        const jobUrl = row['URL'] || '';
+                        const isRejected = row['Rejected'] === 'Yes';
+
+                        if (company && position && dateRaw) {
+                            let submissionDate: string;
+
+                            // Handle Excel dates which can be numbers or strings
+                            if (typeof dateRaw === 'number') {
+                                // Excel base date is Dec 30, 1899
+                                const date = new Date((dateRaw - 25569) * 86400 * 1000);
+                                submissionDate = date.toISOString();
+                            } else {
+                                submissionDate = new Date(dateRaw).toISOString();
+                                if (submissionDate === 'Invalid Date') {
+                                    submissionDate = new Date().toISOString();
+                                }
+                            }
+
+                            importedApps.push({
+                                id: crypto.randomUUID(),
+                                company: String(company),
+                                position: String(position),
+                                status: isRejected ? 'Rejected' : 'Submitted',
+                                submissionDate,
+                                resumeId: '', // unknown resume
+                                notes: [],
+                                journalEntries: [],
+                                jobUrl: String(jobUrl),
+                            });
+                        }
+                    });
+                });
+
+                if (importedApps.length === 0) {
+                    throw new Error('No valid job applications found in Excel file. Ensure columns are named "Org", "Job", and "Applied Date".');
+                }
+
+                // Save to DB
+                await Promise.all(importedApps.map(app => db.saveApplication(app)));
+
+                // Update State
+                setApplications(prev => [...prev, ...importedApps]);
+
+                setMessage(`Successfully imported ${importedApps.length} applications from Excel!`);
+            } catch (err) {
+                console.error('Excel Import failed', err);
+                setError('Failed to import Excel: ' + (err as Error).message);
+            } finally {
+                setIsProcessing(false);
+                // Clear input
+                event.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     return (
         <div className="p-8 max-w-2xl mx-auto space-y-8">
             <h2 className="text-2xl font-bold text-slate-800">Settings</h2>
@@ -182,7 +274,7 @@ const Settings: React.FC<SettingsProps> = ({ applications, resumes, items, quest
                     </div>
 
                     <div className="border-t border-slate-100 pt-4">
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">Import Data</h4>
+                        <h4 className="text-sm font-medium text-slate-700 mb-2">Import Data (JSON)</h4>
                         <p className="text-xs text-slate-500 mb-3">Restore data from a backup file. The imported data will be encrypted with your CURRENT password.</p>
                         <input
                             type="file"
@@ -194,6 +286,30 @@ const Settings: React.FC<SettingsProps> = ({ applications, resumes, items, quest
                                 file:text-sm file:font-semibold
                                 file:bg-indigo-50 file:text-indigo-700
                                 hover:file:bg-indigo-100
+                            "
+                        />
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-4">
+                        <h4 className="text-sm font-medium text-slate-700 mb-2">Import from Excel (.xlsx)</h4>
+                        <p className="text-xs text-slate-500 mb-3">
+                            Import job applications from Excel. Each sheet should have columns:
+                            <span className="font-mono bg-slate-100 px-1 rounded mx-1 text-indigo-600">Org</span>,
+                            <span className="font-mono bg-slate-100 px-1 rounded mx-1 text-indigo-600">Job</span>, and
+                            <span className="font-mono bg-slate-100 px-1 rounded mx-1 text-indigo-600">Applied Date</span>.
+                            Optional: <span className="font-mono bg-slate-100 px-1 rounded mx-1 text-indigo-600">URL</span>,
+                            <span className="font-mono bg-slate-100 px-1 rounded mx-1 text-indigo-600">Rejected</span> (Yes/No).
+                        </p>
+                        <input
+                            type="file"
+                            accept=".xlsx"
+                            onChange={handleExcelImport}
+                            className="block w-full text-sm text-slate-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-full file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-green-50 file:text-green-700
+                                hover:file:bg-green-100
                             "
                         />
                     </div>
