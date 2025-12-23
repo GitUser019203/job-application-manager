@@ -4,8 +4,8 @@ export const parseResumeContent = (content: string): Record<string, string> => {
     let currentSection = 'Header';
     let currentContent: string[] = [];
 
-    // Regex for Section Headers: **UPPERCASE**
-    const sectionHeaderRegex = /^\*\*[A-Z\s&]+\*\*$/;
+    // Regex for Section Headers: **UPPERCASE** or ## Title
+    const sectionHeaderRegex = /^(\*\*[A-Z\s&]+\*\*|##\s+.+)$/;
 
     lines.forEach(line => {
         const trimmed = line.trim();
@@ -17,7 +17,8 @@ export const parseResumeContent = (content: string): Record<string, string> => {
             }
 
             // Start new section
-            currentSection = trimmed.replace(/\*\*/g, '').trim();
+            // Strip ** or ## from the line to get the clean section title
+            currentSection = trimmed.replace(/\*\*/g, '').replace(/^##\s+/, '').trim();
             currentContent = [];
         } else {
             currentContent.push(line);
@@ -30,48 +31,50 @@ export const parseResumeContent = (content: string): Record<string, string> => {
         sections[currentSection] = existing + currentContent.join('\n').trim();
     }
 
-    // Process Header to HTML format
-    if (sections['Header']) {
-        const rawHeader = sections['Header'];
-        // Extract Name (First bold line)
-        const nameMatch = rawHeader.match(/^\*\*(.+?)\*\*/m);
-        const name = nameMatch ? nameMatch[1] : 'Your Name';
+    // Process Header to structured JSON format
+    const rawHeader = sections['Header'] || '';
+    if (rawHeader) {
+        let name = 'Your Name';
+        let phone = 'Phone';
+        let email = 'Email';
+        let linkedin = 'LinkedIn';
 
-        // Extract Table info
-        const tableLineRegex = /\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|/;
-        const headerLines = rawHeader.split('\n');
-        let phone = '';
-        let linkedin = '';
-        let email = '';
+        // Check if it's already our new JSON format
+        if (rawHeader.startsWith('RESUME_HEADER_JSON:')) {
+            // Already normalized
+        } else if (rawHeader && rawHeader.includes('<div')) {
+            // Legacy HTML parsing
+            const nameMatch = rawHeader.match(/<h1>(.*?)<\/h1>/);
+            if (nameMatch) name = nameMatch[1] || name;
+            const spans = rawHeader.match(/<span>(.*?)<\/span>/g) || [];
+            if (spans[0]) phone = spans[0].replace(/<\/?span>/g, '');
+            if (spans[1]) email = spans[1].replace(/<\/?span>/g, '');
+            if (spans[2]) linkedin = spans[2].replace(/<\/?span>/g, '');
 
-        for (const line of headerLines) {
-            if (line.trim().match(/^\|[\s-]+\|/)) continue; // Skip separator line |---|---|
-            const match = line.match(tableLineRegex);
-            if (match) {
-                const c1 = match[1].trim();
-                const c2 = match[2].trim();
-                const c3 = match[3].trim();
-                // Ignore empty cells if possible, but structure suggests 3 cols
-                if (c1 || c2 || c3) {
-                    const vals = [c1, c2, c3];
-                    // Heuristics
-                    email = vals.find(v => v.includes('@')) || '';
-                    linkedin = vals.find(v => v.toLowerCase().includes('linkedin')) || '';
-                    phone = vals.find(v => /[0-9]{3}/.test(v) && !v.includes('@') && !v.includes('linkedin')) || '';
+            sections['Header'] = `RESUME_HEADER_JSON:${JSON.stringify({ name, phone, email, linkedin })}`;
+        } else {
+            // Standard Markdown parsing (existing logic)
+            const nameMatch = rawHeader.match(/^\*\*(.+?)\*\*/m);
+            if (nameMatch) name = nameMatch[1] || name;
 
-                    if (!phone && !linkedin && !email) {
-                        // Fallback order from example
-                        phone = c1;
-                        linkedin = c2;
-                        email = c3;
-                    }
+            const tableLineRegex = /\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|/;
+            const headerLines = rawHeader.split('\n');
+            for (const line of headerLines) {
+                if (line.trim().match(/^\|[\s-]+\|/)) continue;
+                const match = line.match(tableLineRegex);
+                if (match) {
+                    const c1 = match[1] || '';
+                    const c2 = match[2] || '';
+                    const c3 = match[3] || '';
+                    const vals = [c1.trim(), c2.trim(), c3.trim()];
+                    email = vals.find(v => v.includes('@')) || email;
+                    linkedin = vals.find(v => v.toLowerCase().includes('linkedin')) || linkedin;
+                    phone = vals.find(v => /[0-9]{3}/.test(v) && !v.includes('@') && !v.includes('linkedin')) || phone;
                     break;
                 }
             }
+            sections['Header'] = `RESUME_HEADER_JSON:${JSON.stringify({ name, phone, email, linkedin })}`;
         }
-
-        const htmlHeader = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone || 'Phone'}</span>\n  <span>${email || 'Email'}</span>\n  <span>${linkedin || 'LinkedIn'}</span>\n</div>`;
-        sections['Header'] = htmlHeader;
     }
 
     // Normalize Keys to match Editor expectation (Title Case)
@@ -110,11 +113,7 @@ export const compileResumeContent = (sections: Record<string, string>): string =
 
     Object.entries(sections).forEach(([title, text]) => {
         if (title !== 'Header') {
-            if (text.startsWith('---')) {
-                content += `## ${title}\n\n${text}\n\n`;
-            } else {
-                content += `## ${title}\n\n***\n\n${text}\n\n`;
-            }
+            content += `## ${title}\n\n${text}\n\n`;
         }
     });
 

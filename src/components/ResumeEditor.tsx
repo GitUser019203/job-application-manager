@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Resume, ItemType } from './types';
-import MarkdownPreview from './MarkdownPreview';
-import { saveToHTML } from '../utils/htmlUtils';
+import MarkdownPreview, { ResumeHeader } from './MarkdownPreview';
 import { parseResumeContent, compileResumeContent } from '../utils/resumeUtils';
 import { db } from '../utils/db';
 
@@ -44,8 +43,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
 
   const startEditing = (resume?: Resume) => {
     if (resume) {
-      // Parse content if sections are missing (migration)
-      const sections = resume.sections || parseResumeContent(resume.content);
+      // Force migration check by parsing content even if sections exist
+      const sections = parseResumeContent(compileResumeContent(resume.sections || parseResumeContent(resume.content)));
       setEditingResume({ ...resume, sections });
     } else {
       setEditingResume({
@@ -162,40 +161,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
   };
 
   function convertResumeHeaderToLaTeX(content: string) {
-    // Generic regex to match the HTML header block:
-    // <div class="text-center"><h1>Any Name</h1></div>
-    // optional dashes + whitespace
-    // <div class="flex justify-between w-full">
-    //   <span>Phone</span>
-    //   <span>Email</span>
-    //   <span>LinkedIn</span>
-    // </div>
-    //
-    // Captures:
-    //   group 1: Name
-    //   group 2: Phone
-    //   group 3: Email
-    //   group 4: LinkedIn
+    const headerMatch = content.match(/RESUME_HEADER_JSON:({.*?})/);
+    if (!headerMatch) return content;
 
-    const headerRegex = new RegExp(
-      '<div[^>]*class=["\'][^"\']*text-center[^"\']*["\'][^>]*>' + // opening div with text-center
-      '\\s*<h1>\\s*([\\s\\S]*?)\\s*</h1>\\s*' +                     // capture name
-      '</div>' +
-      '\\s*-+\\s*' +                                              // dashes
-      '<div[^>]*class=["\'][^"\']*flex\\s+justify-between\\s+w-full[^"\']*["\'][^>]*>' +
-      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture phone
-      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture email
-      '\\s*<span>\\s*([\\s\\S]*?)\\s*</span>' +                    // capture linkedin
-      '\\s*</div>',
-      'gi'
-    );
-
-    return content.replace(headerRegex, (match, name, phone, email, linkedin) => {
-      // Trim whitespace from captured values
-      name = name.trim();
-      phone = phone.trim();
-      email = email.trim();
-      linkedin = linkedin.trim();
+    try {
+      const { name, phone, email, linkedin } = JSON.parse(headerMatch[1]);
 
       // Return professional LaTeX header
       return `
@@ -210,7 +180,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
   \\end{center}
 
   \\vspace{3em}`.trim();
-    });
+    } catch (e) {
+      console.error("Failed to parse header for LaTeX", e);
+      return content;
+    }
   }
 
   const saveToPDF = async (content: string) => {
@@ -374,9 +347,6 @@ header-includes:
                 <button onClick={() => setPreviewResumeId(editingResume.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
                   Preview
                 </button>
-                <button onClick={() => saveToHTML(editingResume.content)} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
-                  Export HTML
-                </button>
                 <button onClick={() => saveToPDF(editingResume.content)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
                   Export PDF
                 </button>
@@ -424,80 +394,68 @@ header-includes:
                     </div>
 
                     {title === 'Header' ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="col-span-2">
-                          <label className="block text-xs text-slate-500 mb-1">Full Name</label>
-                          <input
-                            type="text"
-                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="John Doe"
-                            value={content.match(/<h1>(.*?)<\/h1>/)?.[1] || ''}
-                            onChange={(e) => {
-                              const newName = e.target.value;
-                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
-                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
-                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
+                      (() => {
+                        let data = { name: '', phone: '', email: '', linkedin: '' };
+                        try {
+                          if (content.startsWith('RESUME_HEADER_JSON:')) {
+                            const jsonStr = content.substring('RESUME_HEADER_JSON:'.length);
+                            data = JSON.parse(jsonStr);
+                          } else {
+                            const match = content.match(/RESUME_HEADER_JSON:({.*?})/);
+                            if (match) data = JSON.parse(match[1]);
+                          }
+                        } catch (e) { }
 
-                              const newHtml = `<div class="text-center"><h1>${newName}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${email}</span>\n  <span>${linkedin}</span>\n</div>`;
-                              updateSection('Header', newHtml);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-500 mb-1">Phone</label>
-                          <input
-                            type="text"
-                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="(555) 123-4567"
-                            value={content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || ''}
-                            onChange={(e) => {
-                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
-                              const newPhone = e.target.value;
-                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
-                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
+                        const updateHeader = (fields: Partial<typeof data>) => {
+                          const newData = { ...data, ...fields };
+                          updateSection('Header', `RESUME_HEADER_JSON:${JSON.stringify(newData)}`);
+                        };
 
-                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${newPhone}</span>\n  <span>${email}</span>\n  <span>${linkedin}</span>\n</div>`;
-                              updateSection('Header', newHtml);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-500 mb-1">Email</label>
-                          <input
-                            type="text"
-                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="john@example.com"
-                            value={content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || ''}
-                            onChange={(e) => {
-                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
-                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
-                              const newEmail = e.target.value;
-                              const linkedin = content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || '';
-
-                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${newEmail}</span>\n  <span>${linkedin}</span>\n</div>`;
-                              updateSection('Header', newHtml);
-                            }}
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-xs text-slate-500 mb-1">LinkedIn (URL or User)</label>
-                          <input
-                            type="text"
-                            className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            placeholder="linkedin.com/in/johndoe"
-                            value={content.match(/<span>(.*?)<\/span>/g)?.[2]?.replace(/<\/?span>/g, '') || ''}
-                            onChange={(e) => {
-                              const name = content.match(/<h1>(.*?)<\/h1>/)?.[1] || '';
-                              const phone = content.match(/<span>(.*?)<\/span>/g)?.[0]?.replace(/<\/?span>/g, '') || '';
-                              const email = content.match(/<span>(.*?)<\/span>/g)?.[1]?.replace(/<\/?span>/g, '') || '';
-                              const newLinkedin = e.target.value;
-
-                              const newHtml = `<div class="text-center"><h1>${name}</h1></div>\n\n----------\n\n<div class="flex justify-between w-full">\n  <span>${phone}</span>\n  <span>${email}</span>\n  <span>${newLinkedin}</span>\n</div>`;
-                              updateSection('Header', newHtml);
-                            }}
-                          />
-                        </div>
-                      </div>
+                        return (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="col-span-2">
+                              <label className="block text-xs text-slate-500 mb-1">Full Name</label>
+                              <input
+                                type="text"
+                                className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="John Doe"
+                                value={data.name}
+                                onChange={(e) => updateHeader({ name: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Phone</label>
+                              <input
+                                type="text"
+                                className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="(555) 123-4567"
+                                value={data.phone}
+                                onChange={(e) => updateHeader({ phone: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Email</label>
+                              <input
+                                type="text"
+                                className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="john@example.com"
+                                value={data.email}
+                                onChange={(e) => updateHeader({ email: e.target.value })}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-xs text-slate-500 mb-1">LinkedIn (URL or User)</label>
+                              <input
+                                type="text"
+                                className="w-full border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="linkedin.com/in/johndoe"
+                                value={data.linkedin}
+                                onChange={(e) => updateHeader({ linkedin: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <textarea
                         value={content}
@@ -512,7 +470,32 @@ header-includes:
 
               {/* Live Preview */}
               <div className="flex-1 border border-slate-200 p-4 rounded overflow-auto bg-white shadow-inner">
-                <MarkdownPreview markdown={editingResume.content} />
+                {/* Securely render Header explicitly */}
+                {(() => {
+                  const headerContent = editingResume.sections?.['Header'] || '';
+                  let headerData = null;
+                  try {
+                    if (headerContent.startsWith('RESUME_HEADER_JSON:')) {
+                      const jsonStr = headerContent.substring('RESUME_HEADER_JSON:'.length);
+                      headerData = JSON.parse(jsonStr);
+                    } else {
+                      const match = headerContent.match(/RESUME_HEADER_JSON:({.*?})/);
+                      if (match) headerData = JSON.parse(match[1]);
+                    }
+                  } catch (e) { }
+
+                  // Filter out Header from the rest of the content for MarkdownPreview
+                  const bodySections = { ...editingResume.sections };
+                  delete bodySections['Header'];
+                  const bodyContent = compileResumeContent(bodySections);
+
+                  return (
+                    <>
+                      {headerData && <ResumeHeader {...headerData} />}
+                      <MarkdownPreview markdown={bodyContent} />
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -607,8 +590,42 @@ header-includes:
               Close
             </button>
           </div>
-          <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full">
-            <MarkdownPreview markdown={getPreviewContent()} />
+          <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full shadow-lg m-4 bg-white border border-slate-100 rounded">
+            {(() => {
+              const resumeLink = resumes.find(r => r.id === previewResumeId);
+              // Use editing version if active to show latest changes
+              const resume = (editingResume && editingResume.id === previewResumeId) ? editingResume : resumeLink;
+
+              if (!resume) return null;
+
+              // Ensure we have sections even if it's a legacy resume string
+              const sections = resume.sections || parseResumeContent(resume.content);
+
+              // 1. Extract Header Data
+              const headerContent = sections['Header'] || '';
+              let headerData = null;
+              try {
+                if (headerContent.startsWith('RESUME_HEADER_JSON:')) {
+                  const jsonStr = headerContent.substring('RESUME_HEADER_JSON:'.length);
+                  headerData = JSON.parse(jsonStr);
+                } else {
+                  const match = headerContent.match(/RESUME_HEADER_JSON:({.*?})/);
+                  if (match) headerData = JSON.parse(match[1]);
+                }
+              } catch (e) { }
+
+              // 2. Prepare Body Content (excluding Header)
+              const bodySections = { ...sections };
+              delete bodySections['Header'];
+              const bodyContent = compileResumeContent(bodySections);
+
+              return (
+                <>
+                  {headerData && <ResumeHeader {...headerData} />}
+                  <MarkdownPreview markdown={bodyContent} />
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

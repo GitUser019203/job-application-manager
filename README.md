@@ -26,10 +26,11 @@ A secure, full-featured React + TypeScript web app for tracking job applications
 - Filter and sort applications by status or date.
 
 ### 📝 Resume Editor
-- **Modern Markdown Editor**: Live preview with full-screen distraction-free mode.
+- **Live Preview & split-view Rendering**: Secure, hybrid preview rendering (HTML headers + Markdown body) for pixel-perfect results in real-time.
+- **Robust Legacy Migration**: Auto-migrates older HTML-based resumes to secure JSON headers on load.
 - **.docx Import**: Upload Word resumes and automatically convert them to structured Markdown.
 - **PDF/HTML Export**: Generate professionally formatted PDFs (via Pandoc) or standalone HTML resumes.
-- **Smart Header**: Synchronized fields for Contact Info with auto-formatting.
+- **Smart Header**: Synchronized fields for Contact Info with auto-formatting and validation.
 - **Version Control**: Manage multiple resumes for different job types.
 
 ### 🎯 Interview Preparation
