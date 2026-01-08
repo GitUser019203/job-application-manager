@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Application } from './types';
 
 interface AnalyticsProps {
@@ -7,6 +7,38 @@ interface AnalyticsProps {
 
 const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const heatmapContainerRef = useRef<HTMLDivElement>(null);
+    const [tooltip, setTooltip] = useState<{
+        date: string;
+        count: number;
+        x: number;
+        y: number;
+    } | null>(null);
+
+    useEffect(() => {
+        if (!tooltip) return;
+        const handleOutsideClick = () => setTooltip(null);
+        window.addEventListener('click', handleOutsideClick);
+        return () => window.removeEventListener('click', handleOutsideClick);
+    }, [tooltip]);
+
+    const getLocalKey = (date: Date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+
+    const formatDate = (dateStr: string) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const d = new Date(year, month - 1, day);
+        return d.toLocaleDateString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
 
     const stats = useMemo(() => {
         // ... (rest of stats logic stays same, or we could filter by year? 
@@ -48,7 +80,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
     const heatmapData = useMemo(() => {
         const data: Record<string, number> = {};
         applications.forEach(app => {
-            const date = new Date(app.submissionDate).toISOString().split('T')[0];
+            const date = getLocalKey(new Date(app.submissionDate));
             data[date] = (data[date] || 0) + 1;
         });
         return data;
@@ -70,7 +102,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
         for (let i = 0; i < totalDays; i++) {
             const d = new Date(startDate);
             d.setDate(startDate.getDate() + i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = getLocalKey(d);
             result.push({
                 date: dateStr,
                 count: heatmapData[dateStr] || 0,
@@ -117,7 +149,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
         <div className="space-y-8 animate-fade-in">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">Analytics</h2>
+                    <h2 className="text-2xl font-bold text-slate-800 pl-10">Analytics</h2>
                     <p className="text-slate-500">Visualize your application journey and consistency</p>
                 </div>
             </div>
@@ -143,7 +175,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
             </div>
 
             {/* Calendar Heatmap */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 overflow-hidden relative" ref={heatmapContainerRef}>
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-semibold text-slate-800">Application Intensity</h3>
                     <div className="flex items-center gap-2">
@@ -206,8 +238,43 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
                                         {week.map((day, dayIndex) => (
                                             <div
                                                 key={dayIndex}
-                                                title={`${day.date}: ${day.count} applications`}
-                                                className={`w-3 h-3 rounded-[2px] ${day.isCurrentYear ? getColor(day.count) : 'bg-transparent'} transition-colors cursor-pointer hover:ring-1 hover:ring-indigo-400`}
+                                                onMouseEnter={(e) => {
+                                                    if (!day.isCurrentYear) return;
+                                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                                    const containerRect = heatmapContainerRef.current?.getBoundingClientRect();
+                                                    if (containerRect) {
+                                                        setTooltip({
+                                                            date: day.date,
+                                                            count: day.count,
+                                                            x: rect.left - containerRect.left + rect.width / 2,
+                                                            y: rect.top - containerRect.top
+                                                        });
+                                                    }
+                                                }}
+                                                onMouseLeave={() => setTooltip(null)}
+                                                onClick={(e) => {
+                                                    if (!day.isCurrentYear) return;
+                                                    e.stopPropagation();
+                                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                                    const containerRect = heatmapContainerRef.current?.getBoundingClientRect();
+                                                    if (containerRect) {
+                                                        if (tooltip?.date === day.date) {
+                                                            setTooltip(null);
+                                                        } else {
+                                                            setTooltip({
+                                                                date: day.date,
+                                                                count: day.count,
+                                                                x: rect.left - containerRect.left + rect.width / 2,
+                                                                y: rect.top - containerRect.top
+                                                            });
+                                                        }
+                                                    }
+                                                }}
+                                                aria-label={`${formatDate(day.date)}: ${day.count} applications`}
+                                                className={`w-3 h-3 rounded-[2px] transition-colors ${day.isCurrentYear
+                                                    ? `${getColor(day.count)} cursor-pointer hover:ring-1 hover:ring-indigo-400`
+                                                    : 'bg-transparent pointer-events-none'
+                                                    }`}
                                             />
                                         ))}
                                     </div>
@@ -228,6 +295,19 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
                     </div>
                     <span>More</span>
                 </div>
+
+                {/* Heatmap Tooltip - Now Absolute within the relative card container */}
+                {tooltip && (
+                    <div
+                        className="absolute z-[100] px-3 py-2 bg-slate-800 text-white text-[11px] rounded-lg shadow-xl pointer-events-none -translate-x-1/2 -translate-y-full mb-2 flex flex-col items-center animate-in fade-in zoom-in duration-200"
+                        style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
+                    >
+                        <div className="font-bold whitespace-nowrap">{formatDate(tooltip.date)}</div>
+                        <div className="text-slate-300">{tooltip.count} {tooltip.count === 1 ? 'application' : 'applications'}</div>
+                        {/* Small arrow */}
+                        <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45" />
+                    </div>
+                )}
             </div>
 
             {/* Secondary Charts */}
@@ -280,13 +360,16 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
                                 <div className="text-2xl font-bold text-slate-800">
                                     {(() => {
                                         let streak = 0;
-                                        const today = new Date().toISOString().split('T')[0];
-                                        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                                        const now = new Date();
+                                        const today = getLocalKey(now);
+                                        const yesterdayDate = new Date(now);
+                                        yesterdayDate.setDate(now.getDate() - 1);
+                                        const yesterday = getLocalKey(yesterdayDate);
 
                                         // Check if applied today or yesterday to continue streak
                                         if (heatmapData[today] || heatmapData[yesterday]) {
-                                            let current = heatmapData[today] ? new Date() : new Date(Date.now() - 86400000);
-                                            while (heatmapData[current.toISOString().split('T')[0]]) {
+                                            let current = heatmapData[today] ? new Date(now) : yesterdayDate;
+                                            while (heatmapData[getLocalKey(current)]) {
                                                 streak++;
                                                 current.setDate(current.getDate() - 1);
                                             }

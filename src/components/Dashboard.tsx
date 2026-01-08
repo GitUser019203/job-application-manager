@@ -14,6 +14,10 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [isAdding, setIsAdding] = useState(false);
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
+  const getToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const [newApplication, setNewApplication] = useState({
     company: '',
     position: '',
@@ -21,7 +25,10 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     jobUrl: '',
     jobDescription: '',
     coverLetter: '',
-    date: new Date().toISOString().split('T')[0],
+    date: (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })(),
   });
 
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -40,7 +47,10 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
       jobUrl: app.jobUrl || '',
       jobDescription: app.jobDescription || '',
       coverLetter: app.coverLetter || '',
-      date: new Date(app.submissionDate).toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date(app.submissionDate);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
     });
     setEditingId(app.id);
     setIsAdding(true);
@@ -104,7 +114,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
       jobUrl: '',
       jobDescription: '',
       coverLetter: '',
-      date: new Date().toISOString().split('T')[0]
+      date: getToday()
     });
     setIsAdding(false);
     setEditingId(null);
@@ -237,7 +247,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
       {/* Header & Stats */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
+          <h2 className="text-2xl font-bold text-slate-800 pl-10">Dashboard</h2>
           <p className="text-slate-500">Track your job applications and progress</p>
         </div>
         <div className="flex items-center space-x-4">
@@ -306,7 +316,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 jobUrl: '',
                 jobDescription: '',
                 coverLetter: '',
-                date: new Date().toISOString().split('T')[0]
+                date: getToday()
               });
             }
           }}
@@ -409,7 +419,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                   jobUrl: '',
                   jobDescription: '',
                   coverLetter: '',
-                  date: new Date().toISOString().split('T')[0]
+                  date: getToday()
                 });
               }}
               className="text-slate-600 hover:text-slate-800 px-4 py-2 rounded-md text-sm font-medium"

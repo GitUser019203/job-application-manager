@@ -11,7 +11,10 @@ interface InterviewJournalProps {
 const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setApplications }) => {
   const [newEntry, setNewEntry] = useState({
     applicationId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })(),
     content: '',
     questions: '',
     outcome: '',
@@ -23,7 +26,10 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
   const startEditing = (entry: any) => {
     setNewEntry({
       applicationId: entry.appId,
-      date: new Date(entry.date).toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date(entry.date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       content: entry.content,
       questions: entry.questions.join('\n'),
       outcome: entry.outcome || '',
@@ -154,7 +160,10 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
 
     setNewEntry({
       applicationId: '',
-      date: new Date().toISOString().split('T')[0],
+      date: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       content: '',
       questions: '',
       outcome: ''
@@ -286,7 +295,10 @@ const InterviewJournal: React.FC<InterviewJournalProps> = ({ applications, setAp
                     setEditingEntry(null);
                     setNewEntry({
                       applicationId: '',
-                      date: new Date().toISOString().split('T')[0],
+                      date: (() => {
+                        const d = new Date();
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                      })(),
                       content: '',
                       questions: '',
                       outcome: ''

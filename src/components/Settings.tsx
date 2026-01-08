@@ -84,7 +84,9 @@ const Settings: React.FC<SettingsProps> = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `job-app-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        link.download = `job-app-manager-backup-${dateStr}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -217,7 +219,7 @@ const Settings: React.FC<SettingsProps> = ({
 
     return (
         <div className="p-8 max-w-2xl mx-auto space-y-8">
-            <h2 className="text-2xl font-bold text-slate-800">Settings</h2>
+            <h2 className="text-2xl font-bold text-slate-800 pl-10">Settings</h2>
 
             {/* Security Section */}
             <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
