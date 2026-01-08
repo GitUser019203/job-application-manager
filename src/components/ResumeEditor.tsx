@@ -3,6 +3,7 @@ import { Resume, ItemType } from './types';
 import MarkdownPreview, { ResumeHeader } from './MarkdownPreview';
 import { parseResumeContent, compileResumeContent } from '../utils/resumeUtils';
 import { db } from '../utils/db';
+import MarkdownIt from 'markdown-it';
 
 interface ResumeEditorProps {
   resumes: Resume[];
@@ -228,6 +229,91 @@ header-includes:
     }
   };
 
+  const saveToHTML = (content: string) => {
+    try {
+      const md = new MarkdownIt({ html: true });
+
+      // Parse header
+      const headerMatch = content.match(/RESUME_HEADER_JSON:({.*?})/);
+      let headerHtml = '';
+      let bodyContent = content;
+
+      if (headerMatch) {
+        try {
+          const { name, phone, email, linkedin } = JSON.parse(headerMatch[1]);
+          headerHtml = `
+            <div style="margin-bottom: 2rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem; font-family: sans-serif;">
+              <div style="text-align: center; margin-bottom: 1rem;">
+                <h1 style="font-size: 2.5rem; font-weight: bold; margin: 0; color: #0f172a;">${name}</h1>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; color: #475569;">
+                <span>${phone}</span>
+                <span>${email}</span>
+                <span>${linkedin}</span>
+              </div>
+            </div>
+          `;
+          bodyContent = content.replace(headerMatch[0], '').trim();
+        } catch (e) {
+          console.error("Failed to parse header for HTML export", e);
+        }
+      }
+
+      const bodyHtml = md.render(bodyContent);
+
+      const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${editingResume?.name || 'Resume'}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.5;
+            color: #334155;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1, h2, h3 { color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; }
+        h1 { margin-bottom: 0.25em; }
+        h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: 0.25em; font-size: 1.5em; }
+        h2 + hr { display: none; }
+        .content > hr:first-child { display: none; }
+        h3 { font-size: 1.25em; }
+        p { margin-bottom: 1em; }
+        ul, ol { margin-bottom: 1em; padding-left: 1.5em; }
+        li { margin-bottom: 0.25em; }
+        hr { border: 0; border-top: 2px solid #e2e8f0; margin: 2em 0; }
+        blockquote { border-left: 4px solid #e2e8f0; padding-left: 1em; font-style: italic; color: #64748b; margin: 1em 0; }
+    </style>
+</head>
+<body>
+    ${headerHtml}
+    <div class="content">
+        ${bodyHtml}
+    </div>
+</body>
+</html>
+      `.trim();
+
+      const blob = new Blob([fullHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${editingResume?.name || 'resume'}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting HTML:', error);
+      alert('Failed to export HTML.');
+    }
+  };
+
   const addItem = () => {
     if (addingItemType && newItemContent.trim()) {
       setItems({
@@ -267,13 +353,6 @@ header-includes:
     updateSection(sectionTitle, newSectionContent);
   };
 
-  const getPreviewContent = () => {
-    if (editingResume) {
-      return editingResume.content || compileResumeContent(editingResume.sections || {});
-    }
-    const resume = resumes.find(r => r.id === previewResumeId);
-    return resume ? (resume.content || compileResumeContent(resume.sections || {})) : '';
-  };
 
   return (
     <div className="flex h-full bg-slate-50 border-t border-slate-200">
@@ -349,6 +428,9 @@ header-includes:
                 </button>
                 <button onClick={() => saveToPDF(editingResume.content)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
                   Export PDF
+                </button>
+                <button onClick={() => saveToHTML(editingResume.content)} className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded text-sm transition-colors">
+                  Export HTML
                 </button>
               </div>
             </div>

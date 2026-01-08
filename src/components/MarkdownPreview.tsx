@@ -34,7 +34,6 @@ const Preview: React.FC<PreviewProps> = ({ markdown = '' }) => {
 
       if (mkTrim.startsWith(jsonPrefix)) {
         // Direct extraction attempt first for efficiency and simpler logic
-        const jsonStr = mkTrim.substring(jsonPrefix.length);
         // We need to parse ONLY the JSON object, not the rest of the markdown.
         // Since there might be trailing markdown, we can't just JSON.parse(jsonStr).
         // We'll fall back to the safe regex that captures the first object.
