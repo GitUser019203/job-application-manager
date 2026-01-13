@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 import { Application, Resume } from './types';
 import { db } from '../utils/db';
 import Preview from './MarkdownPreview';
@@ -131,6 +132,20 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     } catch (err) {
       console.error("Failed to update status", err);
     }
+  };
+
+  const exportToExcel = () => {
+    const data = applications.map(app => ({
+      'Company Name': app.company,
+      'Position': app.position,
+      'URL': app.jobUrl || '',
+      'Application Date': new Date(app.submissionDate).toLocaleDateString()
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Applications");
+    XLSX.writeFile(workbook, `Job_Applications_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleDeleteApplication = async (id: string) => {
@@ -304,26 +319,34 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
             <option value="oldest">Oldest First</option>
           </select>
         </div>
-        <button
-          onClick={() => {
-            setIsAdding(!isAdding);
-            if (!isAdding) {
-              setEditingId(null);
-              setNewApplication({
-                company: '',
-                position: '',
-                resumeId: '',
-                jobUrl: '',
-                jobDescription: '',
-                coverLetter: '',
-                date: getToday()
-              });
-            }
-          }}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
-        >
-          {isAdding ? 'Cancel' : '+ Add Application'}
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md text-sm font-medium border border-slate-200 transition-colors shadow-sm"
+          >
+            <span>📊 Export Excel</span>
+          </button>
+          <button
+            onClick={() => {
+              setIsAdding(!isAdding);
+              if (!isAdding) {
+                setEditingId(null);
+                setNewApplication({
+                  company: '',
+                  position: '',
+                  resumeId: '',
+                  jobUrl: '',
+                  jobDescription: '',
+                  coverLetter: '',
+                  date: getToday()
+                });
+              }
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
+          >
+            {isAdding ? 'Cancel' : '+ Add Application'}
+          </button>
+        </div>
       </div>
 
       {/* Add/Edit Application Form */}
