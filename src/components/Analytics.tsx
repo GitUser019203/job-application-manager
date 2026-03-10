@@ -63,6 +63,22 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
             return acc;
         }, {} as Record<string, number>);
 
+        const appsWithTime = applications.filter(app => typeof app.timeToApply === 'number');
+        const sortedTimes = appsWithTime.map(app => app.timeToApply!).sort((a, b) => a - b);
+        let medianTimeStr = 'N/A';
+        if (sortedTimes.length > 0) {
+            const mid = Math.floor(sortedTimes.length / 2);
+            let medianSecs = 0;
+            if (sortedTimes.length % 2 === 0) {
+                medianSecs = Math.round((sortedTimes[mid - 1] + sortedTimes[mid]) / 2);
+            } else {
+                medianSecs = sortedTimes[mid];
+            }
+            const mins = Math.floor(medianSecs / 60);
+            const secs = medianSecs % 60;
+            medianTimeStr = `${mins > 0 ? `${mins}m ` : ''}${secs}s`;
+        }
+
         return {
             total: applications.length,
             today: applications.filter(app => new Date(app.submissionDate).getTime() >= today).length,
@@ -72,7 +88,8 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
             staleNoInterview: {
                 count: ghostedCount,
                 percentage: applications.length > 0 ? (ghostedCount / applications.length) * 100 : 0
-            }
+            },
+            medianTime: medianTimeStr
         };
     }, [applications]);
 
@@ -155,7 +172,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Total</div>
                     <div className="text-3xl font-bold text-slate-800">{stats.total}</div>
@@ -171,6 +188,10 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Last 30 Days</div>
                     <div className="text-3xl font-bold text-teal-600">{stats.thisMonth}</div>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <div className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Median Time</div>
+                    <div className="text-3xl font-bold text-purple-600">{stats.medianTime}</div>
                 </div>
             </div>
 

@@ -20,6 +20,7 @@ export interface Application {
   jobDescription?: string;
   coverLetter?: string;
   jobUrl?: string;
+  timeToApply?: number; // Time in seconds
 }
 
 export interface Resume {

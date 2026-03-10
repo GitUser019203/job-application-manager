@@ -39,6 +39,27 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timerRunning) {
+      interval = setInterval(() => {
+        if (startTime) {
+          setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timerRunning, startTime]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
 
   const startEditing = (app: Application) => {
     setNewApplication({
@@ -97,6 +118,7 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
         jobUrl: newApplication.jobUrl,
         jobDescription: newApplication.jobDescription,
         coverLetter: newApplication.coverLetter,
+        timeToApply: elapsedTime > 0 ? elapsedTime : undefined,
       };
 
       try {
@@ -119,6 +141,9 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
     });
     setIsAdding(false);
     setEditingId(null);
+    setTimerRunning(false);
+    setElapsedTime(0);
+    setStartTime(null);
   };
 
   const updateStatus = async (id: string, status: Application['status']) => {
@@ -330,7 +355,9 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
             onClick={() => {
               setIsAdding(!isAdding);
               if (!isAdding) {
-                setEditingId(null);
+                setStartTime(null);
+                setElapsedTime(0);
+                setTimerRunning(false);
                 setNewApplication({
                   company: '',
                   position: '',
@@ -393,6 +420,31 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                 placeholder="https://..."
               />
             </div>
+            <div className="md:col-span-1 flex items-end">
+              {!timerRunning ? (
+                <button
+                  onClick={() => {
+                    setStartTime(Date.now() - (elapsedTime * 1000));
+                    setTimerRunning(true);
+                  }}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-md font-medium border border-slate-300 transition-colors flex items-center justify-center gap-2 h-[42px]"
+                >
+                  ⏱️ {elapsedTime > 0 ? 'Resume Timer' : 'Start Timer'}
+                </button>
+              ) : (
+                <div className="w-full flex items-center gap-2">
+                  <div className="flex-1 bg-indigo-50 border border-indigo-200 text-indigo-700 px-4 py-2 rounded-md font-mono font-bold text-center h-[42px] flex items-center justify-center">
+                    {formatTime(elapsedTime)}
+                  </div>
+                  <button
+                    onClick={() => setTimerRunning(false)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-medium transition-colors h-[42px]"
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Resume Used</label>
@@ -444,6 +496,9 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                   coverLetter: '',
                   date: getToday()
                 });
+                setTimerRunning(false);
+                setElapsedTime(0);
+                setStartTime(null);
               }}
               className="text-slate-600 hover:text-slate-800 px-4 py-2 rounded-md text-sm font-medium"
             >
@@ -502,6 +557,11 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
                       return `${diffDays} days ago`;
                     })()}
                   </span>
+                  {app.timeToApply !== undefined && (
+                    <span className="ml-2 text-xs bg-indigo-50 px-1.5 py-0.5 rounded text-indigo-600 border border-indigo-100" title="Time taken to apply">
+                      ⏱️ {formatTime(app.timeToApply)}
+                    </span>
+                  )}
                 </p>
                 {app.resumeId && (
                   <p className="mt-1 text-xs">
