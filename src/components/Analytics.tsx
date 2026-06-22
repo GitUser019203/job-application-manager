@@ -243,12 +243,12 @@ const Analytics: React.FC<AnalyticsProps> = ({ applications }) => {
                         <div className="flex">
                             {/* Weekday Labels */}
                             <div className="flex flex-col pr-2 text-[10px] text-slate-400 space-y-[4.5px] pt-[2px]">
-                                <div className="h-3"></div>
-                                <div className="h-3">Mon</div>
-                                <div className="h-3"></div>
-                                <div className="h-3">Wed</div>
-                                <div className="h-3"></div>
-                                <div className="h-3">Fri</div>
+                                <div className="h-1.5"></div>
+                                <div className="h-1">Mon</div>
+                                <div className="h-3.5"></div>
+                                <div className="h-1">Wed</div>
+                                <div className="h-4"></div>
+                                <div className="h-1">Fri</div>
                                 <div className="h-3"></div>
                             </div>
 
