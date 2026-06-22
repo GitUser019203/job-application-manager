@@ -161,10 +161,11 @@ const Dashboard: React.FC<DashboardProps> = ({ applications, setApplications, re
 
   const exportToExcel = () => {
     const data = applications.map(app => ({
-      'Company Name': app.company,
-      'Position': app.position,
+      'Org': app.company,
+      'Job': app.position,
+      'Applied Date': new Date(app.submissionDate).toLocaleDateString(),
       'URL': app.jobUrl || '',
-      'Application Date': new Date(app.submissionDate).toLocaleDateString()
+      'Rejected': app.status === 'Rejected' ? 'Yes' : 'No'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);

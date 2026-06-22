@@ -42,11 +42,11 @@ app.post('/api/convert-resume', upload.single('file'), (req, res) => {
     // Build the command
     let command;
     if (isWindows) {
-    // On Windows: Set UTF-8 code page silently, then run markitdown with quoted path
-    command = `chcp 65001 > nul && markitdown "${filePath}"`;
+        // On Windows: Set UTF-8 code page silently, then run markitdown with quoted path
+        command = `chcp 65001 > nul && markitdown "${filePath}"`;
     } else {
-    // On Linux/macOS: No chcp needed (terminal is usually UTF-8), just run markitdown
-    command = `markitdown "${filePath}"`;
+        // On Linux/macOS: No chcp needed (terminal is usually UTF-8), just run markitdown
+        command = `markitdown "${filePath}"`;
     }
 
     // Execute markitdown command
@@ -94,8 +94,8 @@ app.post('/api/convert-to-pdf', (req, res) => {
                 console.error('Error sending file:', err);
             }
             // Cleanup both files
-            if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-            if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+            //if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+            //if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
         });
     });
 });

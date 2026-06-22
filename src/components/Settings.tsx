@@ -158,9 +158,9 @@ const Settings: React.FC<SettingsProps> = ({
                     jsonData.forEach(row => {
                         // "Org", "Job", "Applied Date" are mandatory (or at least expected)
                         // "URL" is optional
-                        const company = row['Org'];
-                        const position = row['Job'];
-                        const dateRaw = row['Applied Date'];
+                        const company = row['Org'] || row['Company Name'];
+                        const position = row['Job'] || row['Position'];
+                        const dateRaw = row['Applied Date'] || row['Application Date'];
                         const jobUrl = row['URL'] || '';
                         const isRejected = row['Rejected'] === 'Yes';
 
@@ -195,7 +195,7 @@ const Settings: React.FC<SettingsProps> = ({
                 });
 
                 if (importedApps.length === 0) {
-                    throw new Error('No valid job applications found in Excel file. Ensure columns are named "Org", "Job", and "Applied Date".');
+                    throw new Error('No valid job applications found in Excel file. Ensure columns are named "Org" (or "Company Name"), "Job" (or "Position"), and "Applied Date" (or "Application Date").');
                 }
 
                 // Save to DB

@@ -168,8 +168,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     try {
       const { name, phone, email, linkedin } = JSON.parse(headerMatch[1]);
 
-      // Return professional LaTeX header
-      return `
+      // Return professional LaTeX header replacing the JSON tag
+      const laTeXHeader = `
   \\begin{center}
     {\\huge\\bfseries ${name}}
   \\end{center}
@@ -181,6 +181,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
   \\end{center}
 
   \\vspace{3em}`.trim();
+      return content.replace(headerMatch[0], laTeXHeader);
     } catch (e) {
       console.error("Failed to parse header for LaTeX", e);
       return content;
@@ -191,15 +192,21 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ resumes, setResumes, items,
     try {
       const header = `---
 header-includes:
-  - \\let\\oldrule\\rule
-  - \\renewcommand{\\rule}[2]{\\oldrule{\\linewidth}{#2}}
-  - \\usepackage{titling}
-  - \\pretitle{\\begin{center}\\LARGE\\bfseries}
-  - \\posttitle{\\end{center}\\vspace{1em}}
-  - \\preauthor{}
-  - \\postauthor{}
-  - \\predate{}
-  - \\postdate{}
+  - |
+    \`\`\`{=latex}
+    \\let\\oldrule\\rule
+    \\renewcommand{\\rule}[2]{\\oldrule{\\linewidth}{#2}}
+    \\usepackage{titling}
+    \\pretitle{\\begin{center}\\LARGE\\bfseries}
+    \\posttitle{\\end{center}\\vspace{1em}}
+    \\preauthor{}
+    \\postauthor{}
+    \\predate{}
+    \\postdate{}
+    \\usepackage{titlesec}
+    \\titleformat{\\section}{\\normalfont\\Large\\bfseries}{\\thesection}{1em}{}[\\titlerule]
+    \\titleformat{\\subsection}{\\normalfont\\large\\bfseries}{\\thesubsection}{1em}{}[\\titlerule]
+    \`\`\`
 ---
 `
       const response = await fetch('https://localhost:3001/api/convert-to-pdf', {
